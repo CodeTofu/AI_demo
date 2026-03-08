@@ -126,6 +126,40 @@
   }
 }
 
+/* getFundDetails 工具调用中的 Loading 状态 */
+.fund-tool-loading {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: rgba(248, 250, 252, 0.9);
+  font-size: 0.875rem;
+  color: #475569;
+}
+
+.fund-tool-loading-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #667eea;
+  animation: fundLoadingDot 1.2s ease-in-out infinite;
+}
+
+@keyframes fundLoadingDot {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
 .chat-input-form {
   display: flex;
   gap: 10px;

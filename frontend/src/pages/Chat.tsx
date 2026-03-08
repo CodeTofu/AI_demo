@@ -3,7 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { getToken, isAuthenticated } from '../utils/auth';
+import { FundDataCard } from '../components/FundDataCard';
+import type { FundInfoData } from '../types/fund';
 import './Chat.css';
+
+/** getFundDetails 工具在 message.parts 中的形态 */
+type GetFundDetailsPart =
+  | { type: 'tool-getFundDetails'; state: 'output-available'; output: FundInfoData }
+  | { type: 'tool-getFundDetails'; state: 'input-streaming' | 'input-available' }
+  | { type: 'tool-getFundDetails'; state: string };
+
+function isGetFundDetailsPart(
+  part: { type: string; state?: string; output?: unknown },
+): part is GetFundDetailsPart {
+  return part.type === 'tool-getFundDetails';
+}
 
 /**
  * 聊天页面组件
@@ -40,7 +54,7 @@ export default function Chat() {
     transport,
   });
 
-  const isLoading = status === 'in_progress';
+  const isLoading = String(status) === 'in_progress';
 
   // 如果有错误，显示错误信息
   if (error) {
@@ -56,7 +70,10 @@ export default function Chat() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && !isLoading) {
-      sendMessage({ role: 'user', content: input.trim() });
+      sendMessage({
+        role: 'user',
+        parts: [{ type: 'text', text: input.trim() }],
+      });
       setInput('');
     }
   };
@@ -107,6 +124,31 @@ export default function Chat() {
                   )
                 : (message as { content?: string }).content ?? ''}
             </div>
+            {/* Generative UI：getFundDetails 工具结果 → 基金卡片；调用中 → Loading */}
+            {message.role === 'assistant' &&
+              message.parts?.map((part, index) => {
+                if (!isGetFundDetailsPart(part)) return null;
+                if (part.state === 'output-available' && 'output' in part && part.output) {
+                  return (
+                    <FundDataCard
+                      key={`fund-${(part as { toolCallId?: string }).toolCallId ?? index}`}
+                      data={part.output as FundInfoData}
+                    />
+                  );
+                }
+                if (part.state === 'input-streaming' || part.state === 'input-available') {
+                  return (
+                    <div
+                      key={`fund-loading-${index}`}
+                      className="fund-tool-loading"
+                    >
+                      <span className="fund-tool-loading-dot" />
+                      正在调取实时行情数据...
+                    </div>
+                  );
+                }
+                return null;
+              })}
           </div>
         ))}
 
