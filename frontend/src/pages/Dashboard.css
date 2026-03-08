@@ -1,0 +1,290 @@
+.dashboard-page {
+  min-height: 100vh;
+  background: #f0f2f5;
+}
+
+.dashboard-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.dashboard-board {
+  flex: 0 0 60%;
+  max-width: 60%;
+  padding: 20px 24px 24px;
+  overflow-y: auto;
+}
+
+.dashboard-chat {
+  flex: 0 0 40%;
+  max-width: 40%;
+  min-width: 320px;
+  padding: 20px 20px 24px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-board-header {
+  margin-bottom: 20px;
+}
+
+.dashboard-board-header h1 {
+  margin: 0 0 6px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.dashboard-board-header p {
+  margin: 0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.dashboard-error,
+.dashboard-loading {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.dashboard-error {
+  color: #dc2626;
+}
+
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.dashboard-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f1f5f9;
+}
+
+.dashboard-stat-card--profit.up {
+  border-color: #fecaca;
+  background: linear-gradient(135deg, #fef2f2 0%, #fff 100%);
+}
+
+.dashboard-stat-card--profit.down {
+  border-color: #bbf7d0;
+  background: linear-gradient(135deg, #f0fdf4 0%, #fff 100%);
+}
+
+.dashboard-stat-icon {
+  width: 36px;
+  height: 36px;
+  color: #667eea;
+  flex-shrink: 0;
+}
+
+.dashboard-stat-card--profit.up .dashboard-stat-icon {
+  color: #dc2626;
+}
+
+.dashboard-stat-card--profit.down .dashboard-stat-icon {
+  color: #16a34a;
+}
+
+.dashboard-stat-label {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.dashboard-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.dashboard-stat-value small {
+  font-size: 13px;
+  font-weight: 500;
+  margin-left: 2px;
+}
+
+.dashboard-stat-card--profit.up .dashboard-stat-value {
+  color: #dc2626;
+}
+
+.dashboard-stat-card--profit.down .dashboard-stat-value {
+  color: #16a34a;
+}
+
+.dashboard-pie-wrap {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f1f5f9;
+}
+
+.dashboard-pie-title {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-pie-chart {
+  width: 100%;
+  height: 220px;
+}
+
+/* 持仓列表 - 卡片式（参考：基金名 + 金额 / 成本 / 持仓收益率） */
+.dashboard-holdings-wrap {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f1f5f9;
+}
+
+.dashboard-holdings-title {
+  margin: 0 0 14px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.dashboard-holdings-empty {
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.dashboard-holdings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard-holding-card {
+  padding: 14px 16px;
+  background: #fafafa;
+  border-radius: 10px;
+  border: 1px solid #f1f5f9;
+  transition: background 0.2s;
+}
+
+.dashboard-holding-card:hover {
+  background: #f8fafc;
+}
+
+.dashboard-holding-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dashboard-holding-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-holding-chevron {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: #94a3b8;
+}
+
+.dashboard-holding-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.dashboard-holding-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-holding-metric-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.dashboard-holding-metric-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.dashboard-holding-profit.up {
+  color: #dc2626;
+}
+
+.dashboard-holding-profit.down {
+  color: #16a34a;
+}
+
+.dashboard-holding-rate {
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.dashboard-holding-rate.up {
+  color: #dc2626;
+}
+
+.dashboard-holding-rate.down {
+  color: #16a34a;
+}
+
+@media (max-width: 900px) {
+  .dashboard-layout {
+    flex-direction: column;
+  }
+
+  .dashboard-board {
+    flex: none;
+    max-width: none;
+    padding: 16px;
+  }
+
+  .dashboard-chat {
+    flex: none;
+    max-width: none;
+    min-width: 0;
+    padding: 0 16px 20px;
+    min-height: 70vh;
+  }
+
+  .dashboard-stats {
+    grid-template-columns: 1fr;
+  }
+}

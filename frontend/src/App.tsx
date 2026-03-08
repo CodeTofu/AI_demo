@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Home from './pages/Home'
 import Chat from './pages/Chat'
+import Dashboard from './pages/Dashboard'
 import ProtectedRoute from './components/ProtectedRoute'
 import './App.css'
 
@@ -30,16 +31,25 @@ function App() {
             isAuthenticated() ? <Navigate to="/" replace /> : <Register />
           }
         />
-        {/* 主页（受保护） */}
+        {/* 总览+聊天（主看板+侧边栏） */}
         <Route
           path="/"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        {/* 原主页（用户列表） */}
+        <Route
+          path="/home"
           element={
             <ProtectedRoute>
               <Home />
             </ProtectedRoute>
           }
         />
-        {/* AI 聊天页（受保护） */}
+        {/* 单页聊天（受保护） */}
         <Route
           path="/chat"
           element={

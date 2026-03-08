@@ -32,6 +32,30 @@ export interface AnalyzePortfolioResult {
   totalProfitLossPercent: string;
 }
 
+/** 总览接口：聚合总资产、总收益、日收益、持仓明细（批量拉取实时净值） */
+export interface SummaryHoldingItem {
+  id: number;
+  code: string;
+  name: string;
+  costTotal: number;
+  currentPrice: number;
+  currentValue: number;
+  profitLoss: number;
+  profitLossPercent: string;
+  /** 占比（占当前总市值） */
+  sharePercent: number;
+}
+
+export interface GetSummaryResult {
+  totalInvestment: number;
+  totalValue: number;
+  totalProfit: number;
+  profitRate: string;
+  /** 持仓只数 */
+  holdingCount: number;
+  holdings: SummaryHoldingItem[];
+}
+
 @Injectable()
 export class HoldingsService {
   constructor(
@@ -156,6 +180,86 @@ export class HoldingsService {
       totalCurrent,
       totalProfitLoss,
       totalProfitLossPercent: (totalProfitLoss >= 0 ? '+' : '') + totalProfitLossPercent,
+    };
+  }
+
+  /**
+   * 总览：聚合总本金、总市值、总盈亏、盈亏率；批量请求实时净值（Promise.all）返回持仓明细
+   */
+  async getSummary(userId: number): Promise<GetSummaryResult> {
+    const list = await this.prisma.holding.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (list.length === 0) {
+      return {
+        totalInvestment: 0,
+        totalValue: 0,
+        totalProfit: 0,
+        profitRate: '0%',
+        holdingCount: 0,
+        holdings: [],
+      };
+    }
+
+    const uniqueCodes = [...new Set(list.map((h) => h.code))];
+    const fundInfos = await Promise.all(
+      uniqueCodes.map((code) => this.fundService.getFundInfo(code)),
+    );
+    const priceByCode = new Map<string, number>();
+    uniqueCodes.forEach((code, i) => {
+      const p = parseFloat(fundInfos[i]?.netValue ?? '0');
+      priceByCode.set(code, Number.isNaN(p) ? 0 : p);
+    });
+
+    let totalInvestment = 0;
+    let totalValue = 0;
+    const holdings: SummaryHoldingItem[] = [];
+
+    for (const h of list) {
+      const currentPrice = priceByCode.get(h.code) ?? h.costPrice;
+      const amount = h.costTotal / h.costPrice;
+      const currentValue = amount * (currentPrice || h.costPrice);
+      const profitLoss = currentValue - h.costTotal;
+      const profitLossPercent =
+        h.costTotal > 0
+          ? ((profitLoss / h.costTotal) * 100).toFixed(2) + '%'
+          : '0%';
+
+      totalInvestment += h.costTotal;
+      totalValue += currentValue;
+
+      holdings.push({
+        id: h.id,
+        code: h.code,
+        name: h.name,
+        costTotal: h.costTotal,
+        currentPrice,
+        currentValue,
+        profitLoss,
+        profitLossPercent: (profitLoss >= 0 ? '+' : '') + profitLossPercent,
+        sharePercent: 0,
+      });
+    }
+
+    const totalProfit = totalValue - totalInvestment;
+    const profitRate =
+      totalInvestment > 0
+        ? ((totalProfit / totalInvestment) * 100).toFixed(2) + '%'
+        : '0%';
+
+    holdings.forEach((item) => {
+      item.sharePercent =
+        totalValue > 0 ? (item.currentValue / totalValue) * 100 : 0;
+    });
+
+    return {
+      totalInvestment,
+      totalValue,
+      totalProfit,
+      profitRate: (totalProfit >= 0 ? '+' : '') + profitRate,
+      holdingCount: holdings.length,
+      holdings,
     };
   }
 }

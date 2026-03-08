@@ -5,9 +5,10 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AiModule } from './ai/ai.module';
+import { HoldingsModule } from './holdings/holdings.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, AiModule], // 导入 Prisma 模块、用户模块、认证模块和 AI 模块
+  imports: [PrismaModule, UsersModule, AuthModule, AiModule, HoldingsModule],
   controllers: [AppController],
   providers: [AppService],
 })
