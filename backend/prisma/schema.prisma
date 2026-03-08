@@ -12,12 +12,30 @@ datasource db {
 
 // 用户模型
 model User {
-  id        Int      @id @default(autoincrement()) // 主键，自增
-  name      String   // 姓名
-  email     String   @unique // 邮箱，唯一索引
-  password  String   // 密码（加密后存储）
-  createdAt DateTime @default(now()) // 创建时间
-  updatedAt DateTime @updatedAt // 更新时间
+  id        Int       @id @default(autoincrement()) // 主键，自增
+  name      String    // 姓名
+  email     String    @unique // 邮箱，唯一索引
+  password  String    // 密码（加密后存储）
+  createdAt DateTime  @default(now()) // 创建时间
+  updatedAt DateTime  @updatedAt // 更新时间
+  holdings  Holding[] // 持仓
 
   @@map("users") // 数据库表名
+}
+
+// 持仓模型（个人持仓管理）：只存总成本与成本单价，不存份额；当前持仓/收益/收益率由实时净值计算
+model Holding {
+  id         Int      @id @default(autoincrement())
+  code       String   // 基金代码 6 位
+  name       String   // 基金名称
+  costTotal  Float    // 总成本（元）
+  costPrice  Float    // 成本单价（用于推算份额：份额 = costTotal / costPrice）
+  userId     Int      // 所属用户
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("holdings")
 }

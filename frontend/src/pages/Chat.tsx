@@ -4,7 +4,9 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { getToken, isAuthenticated } from '../utils/auth';
 import { FundDataCard } from '../components/FundDataCard';
+import { RecordHoldingSuccessCard } from '../components/RecordHoldingSuccessCard';
 import type { FundInfoData } from '../types/fund';
+import type { RecordHoldingSuccessOutput } from '../components/RecordHoldingSuccessCard';
 import './Chat.css';
 
 /** getFundDetails 工具在 message.parts 中的形态 */
@@ -17,6 +19,13 @@ function isGetFundDetailsPart(
   part: { type: string; state?: string; output?: unknown },
 ): part is GetFundDetailsPart {
   return part.type === 'tool-getFundDetails';
+}
+
+/** recordHolding 工具成功返回时展示 */
+function isRecordHoldingPart(
+  part: { type: string; state?: string; output?: unknown },
+): part is { type: 'tool-recordHolding'; state: 'output-available'; output: RecordHoldingSuccessOutput } {
+  return part.type === 'tool-recordHolding' && part.state === 'output-available' && part.output != null;
 }
 
 /**
@@ -124,27 +133,34 @@ export default function Chat() {
                   )
                 : (message as { content?: string }).content ?? ''}
             </div>
-            {/* Generative UI：getFundDetails 工具结果 → 基金卡片；调用中 → Loading */}
+            {/* Generative UI：getFundDetails → 基金卡片；recordHolding 成功 → 成功反馈卡片 */}
             {message.role === 'assistant' &&
               message.parts?.map((part, index) => {
-                if (!isGetFundDetailsPart(part)) return null;
-                if (part.state === 'output-available' && 'output' in part && part.output) {
-                  return (
-                    <FundDataCard
-                      key={`fund-${(part as { toolCallId?: string }).toolCallId ?? index}`}
-                      data={part.output as FundInfoData}
-                    />
-                  );
+                const keyId = (part as { toolCallId?: string }).toolCallId ?? index;
+                if (isGetFundDetailsPart(part)) {
+                  if (part.state === 'output-available' && 'output' in part && part.output) {
+                    return (
+                      <FundDataCard
+                        key={`fund-${keyId}`}
+                        data={part.output as FundInfoData}
+                      />
+                    );
+                  }
+                  if (part.state === 'input-streaming' || part.state === 'input-available') {
+                    return (
+                      <div key={`fund-loading-${keyId}`} className="fund-tool-loading">
+                        <span className="fund-tool-loading-dot" />
+                        正在调取实时行情数据...
+                      </div>
+                    );
+                  }
                 }
-                if (part.state === 'input-streaming' || part.state === 'input-available') {
+                if (isRecordHoldingPart(part) && part.output?.ok) {
                   return (
-                    <div
-                      key={`fund-loading-${index}`}
-                      className="fund-tool-loading"
-                    >
-                      <span className="fund-tool-loading-dot" />
-                      正在调取实时行情数据...
-                    </div>
+                    <RecordHoldingSuccessCard
+                      key={`record-${keyId}`}
+                      data={part.output}
+                    />
                   );
                 }
                 return null;

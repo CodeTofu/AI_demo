@@ -3,16 +3,17 @@ import {
   Post,
   Body,
   Res,
+  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { ChatService } from './chat.service';
 import { ChatDto } from './dto/chat.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 /**
  * Chat 控制器
- * POST /api/chat：流式聊天（带 getFundDetails 工具），将 Tool Calling 与文字流实时写入响应。
+ * POST /api/chat：流式聊天（getFundDetails / recordHolding / analyzePortfolio），需登录，userId 用于持仓管理。
  */
 @Controller('chat')
 @UseGuards(JwtAuthGuard)
@@ -21,11 +22,15 @@ export class ChatController {
 
   /**
    * POST /api/chat
-   * 使用 ChatService 的 streamText + getFundDetails 工具，通过 pipeUIMessageStreamToResponse 将
-   * AI 的 Tool Calling 信令及文字流实时传输给前端。
+   * 从 JWT 取当前用户 id，传入 stream 以支持持仓记录与组合分析。
    */
   @Post()
-  async chat(@Body() body: any, @Res() res: Response) {
+  async chat(@Body() body: any, @Req() req: Request, @Res() res: Response) {
+    const userId = (req as any).user?.id;
+    if (userId == null) {
+      res.status(401).json({ error: '未登录或用户无效' });
+      return;
+    }
     let messages = body.messages || [];
 
     if (!messages || messages.length === 0) {
@@ -53,7 +58,7 @@ export class ChatController {
     const chatDto: ChatDto = { messages: chatMessages };
 
     try {
-      const result = await this.chatService.stream(chatDto);
+      const result = await this.chatService.stream(chatDto, userId);
       result.pipeUIMessageStreamToResponse(res as any);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
