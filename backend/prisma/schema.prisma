@@ -1,0 +1,23 @@
+// Prisma Schema 文件
+// 定义数据库模型和连接配置
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户模型
+model User {
+  id        Int      @id @default(autoincrement()) // 主键，自增
+  name      String   // 姓名
+  email     String   @unique // 邮箱，唯一索引
+  password  String   // 密码（加密后存储）
+  createdAt DateTime @default(now()) // 创建时间
+  updatedAt DateTime @updatedAt // 更新时间
+
+  @@map("users") // 数据库表名
+}
