@@ -202,6 +202,15 @@
   margin-bottom: 12px;
 }
 
+.dashboard-holding-name-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .dashboard-holding-name {
   font-size: 16px;
   font-weight: 700;
@@ -211,6 +220,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dashboard-holding-code {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
 }
 
 .dashboard-holding-chevron {

@@ -49,15 +49,36 @@ interface LsjzApiResponse {
 
 const FUND_GZ_URL = 'http://fundgz.1234567.com.cn/js';
 const LSJZ_URL = 'http://api.fund.eastmoney.com/f10/lsjz';
+const FUNDCODE_SEARCH_URL = 'http://fund.eastmoney.com/js/fundcode_search.js';
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const REFERER = 'http://fundf10.eastmoney.com/';
+
+/** 基金列表项 [代码, 拼音简写, 名称, 类型, 拼音全称] */
+type FundCodeListItem = [string, string, string, string, string];
+
+/** 内存缓存基金列表，避免频繁请求 */
+let fundListCache: { list: FundCodeListItem[]; at: number } | null = null;
+const FUND_LIST_CACHE_MS = 5 * 60 * 1000;
 
 /**
  * 基金服务：使用天天基金（Eastmoney）API 获取真实基金数据
  */
 @Injectable()
 export class FundService {
+  /**
+   * 根据「基金代码」或「基金名称」查询基金信息（名称会先解析为代码）
+   */
+  async getFundInfoByQuery(query: string): Promise<FundInfo> {
+    const trimmed = query.trim();
+    if (/^\d{6}$/.test(trimmed)) {
+      return this.getFundInfo(trimmed);
+    }
+    const code = await this.getCodeByName(trimmed);
+    if (code) return this.getFundInfo(code);
+    return this.fallbackFundInfo(trimmed);
+  }
+
   /**
    * 根据基金代码获取基金信息（调用天天基金 API）
    */
@@ -223,6 +244,47 @@ export class FundService {
       change1w: net1w > 0 ? format(net1w) : '—',
       change1m: net1m > 0 ? format(net1m) : '—',
     };
+  }
+
+  /**
+   * 根据基金名称解析为 6 位基金代码（使用天天基金 fundcode_search 列表，带缓存）
+   */
+  async getCodeByName(name: string): Promise<string | null> {
+    const list = await this.fetchFundCodeList();
+    const key = name.trim();
+    if (!key) return null;
+    const exact = list.find((item) => item[2].trim() === key);
+    if (exact) return exact[0];
+    const includes = list.find(
+      (item) => item[2].trim().includes(key) || key.includes(item[2].trim()),
+    );
+    return includes ? includes[0] : null;
+  }
+
+  /** 拉取基金代码列表（格式：[代码, 拼音简写, 名称, 类型, 拼音全称][]），带 5 分钟缓存 */
+  private async fetchFundCodeList(): Promise<FundCodeListItem[]> {
+    const now = Date.now();
+    if (fundListCache && now - fundListCache.at < FUND_LIST_CACHE_MS) {
+      return fundListCache.list;
+    }
+    const res = await fetch(FUNDCODE_SEARCH_URL, {
+      headers: { 'User-Agent': UA },
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await res.text();
+    const match = text.match(/var r = (\[[\s\S]*?\]);?\s*$/m);
+    if (!match) {
+      if (fundListCache) return fundListCache.list;
+      return [];
+    }
+    try {
+      const list = JSON.parse(match[1]) as FundCodeListItem[];
+      fundListCache = { list, at: now };
+      return list;
+    } catch {
+      if (fundListCache) return fundListCache.list;
+      return [];
+    }
   }
 
   private fallbackFundInfo(code: string): FundInfo {

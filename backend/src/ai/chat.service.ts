@@ -6,8 +6,9 @@ import { FundService } from '../fund/fund.service';
 import { HoldingsService } from '../holdings/holdings.service';
 import { ChatDto } from './dto/chat.dto';
 
-const fundCodeSchema = z.object({
-  code: z.string().length(6, '基金代码必须为 6 位').regex(/^\d{6}$/, '基金代码必须为 6 位数字'),
+/** 基金查询：支持 6 位代码或基金名称 */
+const fundQuerySchema = z.object({
+  query: z.string().min(1, '请输入基金代码（6 位）或基金名称'),
 });
 
 const recordHoldingSchema = z.object({
@@ -18,7 +19,7 @@ const recordHoldingSchema = z.object({
 
 const SYSTEM_PROMPT = `你是一个专业的基金分析助手。
 
-1. **基金查询**：当用户询问某只基金（6 位代码）的信息、业绩、对比或风险时，调用 getFundDetails 获取真实数据后回答。
+1. **基金查询**：当用户询问某只基金的信息、业绩、对比或风险时，调用 getFundDetails。用户可提供「6 位基金代码」或「准确的基金名称」，例如 000001 或「华夏成长混合」。
 
 2. **记录持仓（重要）**：
    - 只要用户说了要记录/添加持仓，且提到了「基金代码 + 当前持仓金额 + 收益」，你就必须立即调用 recordHolding，用用户给的三项填好参数，直接记录。禁止追问「成本单价」「持仓份额」「购买总金额」等任何信息。
@@ -75,10 +76,10 @@ export class ChatService {
       tools: {
         getFundDetails: {
           description:
-            '当用户询问基金代码（如 000001）的相关信息、业绩、对比或风险时，必须调用此工具。不要尝试猜测数据。',
-          inputSchema: fundCodeSchema,
-          execute: async (args: { code: string }) => {
-            return this.fundService.getFundInfo(args.code);
+            '当用户询问某只基金的信息、业绩、对比或风险时调用。入参为 query：用户提供的 6 位基金代码（如 000001）或准确的基金名称（如 华夏成长混合）。不要尝试猜测数据。',
+          inputSchema: fundQuerySchema,
+          execute: async (args: { query: string }) => {
+            return this.fundService.getFundInfoByQuery(args.query);
           },
         },
         recordHolding: {

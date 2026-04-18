@@ -155,7 +155,10 @@ export default function Dashboard() {
                     {summary.holdings.map((h) => (
                       <li key={h.id} className="dashboard-holding-card">
                         <div className="dashboard-holding-card-header">
-                          <span className="dashboard-holding-name">{h.name}</span>
+                          <span className="dashboard-holding-name-wrap">
+                            <span className="dashboard-holding-name">{h.name}</span>
+                            <span className="dashboard-holding-code">（{h.code}）</span>
+                          </span>
                           <ChevronRight className="dashboard-holding-chevron" />
                         </div>
                         <div className="dashboard-holding-metrics">
