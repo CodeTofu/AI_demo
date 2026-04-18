@@ -10,18 +10,19 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { getSummary, type GetSummaryResult } from '../api/holdings';
+import type { GetSummaryResult } from '../api/holdings';
+import { getBffDashboard, type BffDashboardResponse } from '../api/bff';
 import { ChatPanel } from '../components/ChatPanel';
 import { isAuthenticated } from '../utils/auth';
 import './Dashboard.css';
 
-const SUMMARY_SWR_KEY = 'holdings-summary';
+const BFF_DASHBOARD_SWR_KEY = 'bff-dashboard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { data, error, isLoading, mutate } = useSWR<GetSummaryResult>(
-    SUMMARY_SWR_KEY,
-    getSummary,
+  const { data, error, isLoading, mutate } = useSWR<BffDashboardResponse>(
+    BFF_DASHBOARD_SWR_KEY,
+    getBffDashboard,
     { revalidateOnFocus: true }
   );
 
@@ -29,7 +30,7 @@ export default function Dashboard() {
     if (!isAuthenticated()) navigate('/login');
   }, [navigate]);
 
-  const summary = data;
+  const summary: GetSummaryResult | undefined = data?.portfolio;
   const totalValue = summary?.totalValue ?? 0;
   const totalProfit = summary?.totalProfit ?? 0;
   const profitRate = summary?.profitRate ?? '0%';
@@ -58,12 +59,18 @@ export default function Dashboard() {
         <aside className="dashboard-board">
           <header className="dashboard-board-header">
             <h1>资产总览</h1>
-            <p>实时净值 · 盈亏一目了然</p>
+            <p>
+              {data?.user?.name != null
+                ? `${data.user.name} · `
+                : ''}
+              实时净值 · 盈亏一目了然
+            </p>
           </header>
 
           {error && (
             <div className="dashboard-error">
-              加载失败，请稍后刷新
+              加载失败。请确认 BFF 已启动（<code>bff</code> 目录 <code>npm run dev</code>
+              ，端口 4000）且后端 3001 可用，稍后重试。
             </div>
           )}
 

@@ -25,6 +25,7 @@
 | 后端 | NestJS 10、Passport JWT、class-validator、Prisma |
 | 数据库 | PostgreSQL 16（本地可用 Docker 一键启动） |
 | AI | `@ai-sdk/openai` + `ai`（兼容 OpenAI 兼容接口，如 DeepSeek 等需配置 Base URL） |
+| BFF（可选） | 独立 Node 服务（Express），聚合 Core API，默认端口 **4000**，详见 [bff/README.md](./bff/README.md) |
 
 ---
 
@@ -33,7 +34,8 @@
 ```
 .
 ├── frontend/          # React 前端（端口默认 3000）
-├── backend/           # NestJS 后端（端口默认 3001）
+├── backend/           # NestJS Core API（端口默认 3001）
+├── bff/               # 独立 BFF（可选，学习用；默认端口 4000）
 ├── docs/              # 补充文档（启动、聊天流程、AI SDK、排错等）
 └── README.md          # 本文件
 ```
@@ -114,6 +116,23 @@ npm run dev
 2. 登录后默认进入 **Dashboard**（`/`）。  
 3. AI 聊天：需在后端 `.env` 中配置可用的 API Key；详见 [docs/AI_SDK_SETUP.md](./docs/AI_SDK_SETUP.md)。  
 
+### 6. 独立 BFF（可选，学习编排层）
+
+用于演示 **浏览器 → BFF → Nest Core** 的二跳架构：在第三个终端启动 BFF，前端可通过 Vite 代理访问 `/bff/*`。
+
+```bash
+cd bff
+npm install
+copy .env.example .env
+npm run dev
+```
+
+- BFF：<http://localhost:4000/health>  
+- 聚合示例：`GET /bff/v1/dashboard`（需登录态 JWT），说明见 [bff/README.md](./bff/README.md)。  
+- Dashboard 默认通过 `getBffDashboard()` 拉取聚合数据（见 `frontend/src/api/bff.ts`）。  
+
+**注意**：BFF 的 `JWT_SECRET` 须与 Core 签发 JWT 使用的密钥一致（见 `backend/src/auth/auth.module.ts` 当前默认值）。
+
 ---
 
 ## 常用命令
@@ -125,6 +144,7 @@ npm run dev
 | backend | `npm run dev` | Nest 开发（热重载） |
 | backend | `npm run prisma:studio` | Prisma 图形化查看数据 |
 | backend | `npm run prisma:migrate` | 执行迁移（开发） |
+| bff | `npm run dev` | 独立 BFF 开发（热重载） |
 
 ---
 
@@ -141,3 +161,4 @@ npm run dev
 - [文档索引](./docs/README.md)  
 - [详细启动步骤](./docs/START_PROJECT.md)  
 - [后端说明](./backend/README.md)  
+- [独立 BFF 说明](./bff/README.md)  
