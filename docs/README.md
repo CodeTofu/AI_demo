@@ -17,6 +17,7 @@
 - [VERCEL_AI_SDK_INTRO.md](./VERCEL_AI_SDK_INTRO.md) - Vercel AI SDK 简介
 - [AI_SDK_SETUP.md](./AI_SDK_SETUP.md) - AI SDK 集成说明
 - [CHAT_PAGE_TROUBLESHOOTING.md](./CHAT_PAGE_TROUBLESHOOTING.md) - 聊天页面问题排查
+- [WEBSOCKET_REALTIME.md](./WEBSOCKET_REALTIME.md) - Socket.IO 实时通道（`/realtime`、JWT、Dashboard）
 
 ## 📄 后端文档
 

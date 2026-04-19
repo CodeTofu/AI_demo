@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { FundService } from '../fund/fund.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 /** 用户只需提供当前持仓 + 持仓收益，不询问份额或成本单价 */
 export interface RecordHoldingInput {
@@ -61,6 +62,7 @@ export class HoldingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fundService: FundService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   /**
@@ -112,6 +114,8 @@ export class HoldingsService {
       costTotal > 0
         ? ((profitLoss / costTotal) * 100).toFixed(2) + '%'
         : '0%';
+
+    this.realtime.notifyPortfolioChanged(userId);
 
     return {
       ok: true,

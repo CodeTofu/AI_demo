@@ -14,6 +14,7 @@ import type { GetSummaryResult } from '../api/holdings';
 import { getBffDashboard, type BffDashboardResponse } from '../api/bff';
 import { ChatPanel } from '../components/ChatPanel';
 import { isAuthenticated } from '../utils/auth';
+import { usePortfolioRealtime } from '../hooks/usePortfolioRealtime';
 import './Dashboard.css';
 
 const BFF_DASHBOARD_SWR_KEY = 'bff-dashboard';
@@ -25,6 +26,9 @@ export default function Dashboard() {
     getBffDashboard,
     { revalidateOnFocus: true }
   );
+
+  const { connected: wsConnected, lastEvent: wsLastEvent, lastPongMs, sendPing } =
+    usePortfolioRealtime(mutate);
 
   useEffect(() => {
     if (!isAuthenticated()) navigate('/login');
@@ -58,13 +62,38 @@ export default function Dashboard() {
       <div className="dashboard-layout">
         <aside className="dashboard-board">
           <header className="dashboard-board-header">
-            <h1>资产总览</h1>
-            <p>
-              {data?.user?.name != null
-                ? `${data.user.name} · `
-                : ''}
-              实时净值 · 盈亏一目了然
-            </p>
+            <div className="dashboard-board-header-row">
+              <div>
+                <h1>资产总览</h1>
+                <p>
+                  {data?.user?.name != null ? `${data.user.name} · ` : ''}
+                  实时净值 · 盈亏一目了然
+                </p>
+              </div>
+              <div className="dashboard-ws-panel" title="Socket.IO /realtime 实时通道">
+                <span
+                  className={`dashboard-ws-dot ${wsConnected ? 'on' : 'off'}`}
+                  aria-hidden
+                />
+                <span className="dashboard-ws-text">
+                  {wsConnected ? '实时通道已连接' : '实时未连接'}
+                </span>
+                <button
+                  type="button"
+                  className="dashboard-ws-ping"
+                  onClick={sendPing}
+                  disabled={!wsConnected}
+                >
+                  Ping
+                </button>
+                {lastPongMs != null && (
+                  <span className="dashboard-ws-meta">pong {lastPongMs}</span>
+                )}
+              </div>
+            </div>
+            {wsLastEvent && (
+              <p className="dashboard-ws-hint">{wsLastEvent}</p>
+            )}
           </header>
 
           {error && (
