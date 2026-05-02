@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
+import {
+  DefaultChatTransport,
+  convertFileListToFileUIParts,
+  isFileUIPart,
+  type FileUIPart,
+} from 'ai';
 import { getToken } from '../utils/auth';
 import { FundDataCard } from './FundDataCard';
 import { RecordHoldingSuccessCard } from './RecordHoldingSuccessCard';
@@ -28,9 +33,44 @@ interface ChatPanelProps {
   onHoldingsChange?: () => void;
 }
 
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
 export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
   const [input, setInput] = useState('');
+  const [hasPendingImage, setHasPendingImage] = useState(false);
+  const [pendingFileName, setPendingFileName] = useState<string | null>(null);
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 与预览 state 同步，避免 onChange 连续触发时错误 revoke */
+  const pendingPreviewRef = useRef<string | null>(null);
   const notifiedKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      if (pendingPreviewRef.current) {
+        URL.revokeObjectURL(pendingPreviewRef.current);
+      }
+    };
+  }, []);
+
+  const applyFileInputSelection = (el: HTMLInputElement | null) => {
+    if (pendingPreviewRef.current) {
+      URL.revokeObjectURL(pendingPreviewRef.current);
+      pendingPreviewRef.current = null;
+    }
+    const file = el?.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      pendingPreviewRef.current = url;
+      setHasPendingImage(true);
+      setPendingFileName(file.name);
+      setPendingPreviewUrl(url);
+    } else {
+      setHasPendingImage(false);
+      setPendingFileName(null);
+      setPendingPreviewUrl(null);
+    }
+  };
 
   const transport = useMemo(
     () =>
@@ -64,12 +104,59 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
     }
   }, [messages, onHoldingsChange]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (input.trim() && !isLoading) {
-      sendMessage({ role: 'user', parts: [{ type: 'text', text: input.trim() }] });
-      setInput('');
+  const clearPendingFile = () => {
+    if (pendingPreviewRef.current) {
+      URL.revokeObjectURL(pendingPreviewRef.current);
+      pendingPreviewRef.current = null;
     }
+    setHasPendingImage(false);
+    setPendingFileName(null);
+    setPendingPreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoading) return;
+    const text = input.trim();
+    const files = fileInputRef.current?.files;
+    if (!text && (!files || files.length === 0)) return;
+
+    if (files?.length && files[0].size > MAX_IMAGE_BYTES) {
+      alert(`图片请小于 ${MAX_IMAGE_BYTES / 1024 / 1024}MB`);
+      return;
+    }
+
+    const parts: Array<{ type: 'text'; text: string } | FileUIPart> = [];
+    if (text) {
+      parts.push({ type: 'text', text });
+    }
+    try {
+      if (files?.length) {
+        const fileParts = await convertFileListToFileUIParts(files);
+        parts.push(...fileParts);
+      }
+    } catch (err) {
+      console.error('[ChatPanel] convertFileListToFileUIParts', err);
+      alert(err instanceof Error ? err.message : '处理图片失败，请换一张图重试');
+      return;
+    }
+    if (!text && files?.length) {
+      parts.unshift({
+        type: 'text',
+        text: '请根据图片回答：简要说明图中可见的关键信息；若与基金、持仓相关请一并指出。',
+      });
+    }
+
+    try {
+      sendMessage({ role: 'user', parts });
+    } catch (err) {
+      console.error('[ChatPanel] sendMessage', err);
+      alert(err instanceof Error ? err.message : '发送失败');
+      return;
+    }
+    setInput('');
+    clearPendingFile();
   };
 
   return (
@@ -104,6 +191,13 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
                       <span key={idx}>{part.text}</span>
                     ) : part.type === 'reasoning' ? (
                       <span key={idx} className="reasoning">{part.text}</span>
+                    ) : isFileUIPart(part) && part.mediaType.startsWith('image/') ? (
+                      <img
+                        key={idx}
+                        src={part.url}
+                        alt={part.filename ?? '上传的图片'}
+                        className="chat-panel-message-image"
+                      />
                     ) : null
                   )
                 : (message as { content?: string }).content ?? ''}
@@ -140,6 +234,18 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
         )}
       </div>
       <form onSubmit={handleSubmit} className="chat-panel-form">
+        <label className="chat-panel-image-picker">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="chat-panel-file-native"
+            aria-label="选择一张图片"
+            disabled={isLoading}
+            onChange={(e) => applyFileInputSelection(e.target as HTMLInputElement)}
+          />
+          <span className="chat-panel-image-picker-label">图片</span>
+        </label>
         <input
           type="text"
           value={input}
@@ -148,10 +254,31 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
           disabled={isLoading}
           className="chat-panel-input"
         />
-        <button type="submit" disabled={isLoading || !input.trim()}>
+        <button
+          type="submit"
+          disabled={isLoading || (!input.trim() && !hasPendingImage)}
+        >
           {isLoading ? '发送中' : '发送'}
         </button>
       </form>
+      {(pendingFileName || pendingPreviewUrl) && (
+        <div className="chat-panel-pending-file">
+          {pendingPreviewUrl && (
+            <img src={pendingPreviewUrl} alt="" className="chat-panel-pending-thumb" />
+          )}
+          <span className="chat-panel-pending-name">
+            {pendingFileName ? `已选：${pendingFileName}` : '已选择图片'}
+          </span>
+          <button
+            type="button"
+            className="chat-panel-pending-clear"
+            onClick={clearPendingFile}
+            disabled={isLoading}
+          >
+            清除
+          </button>
+        </div>
+      )}
     </div>
   );
 }

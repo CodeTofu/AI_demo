@@ -5,11 +5,12 @@ import {
   Res,
   Req,
   UseGuards,
+  HttpException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ChatService } from './chat.service';
-import { ChatDto } from './dto/chat.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import type { UIMessage } from 'ai';
 
 /**
  * Chat 控制器
@@ -41,26 +42,41 @@ export class ChatController {
       }
     }
 
-    const chatMessages = messages.map((msg: any) => {
-      let content = msg.content ?? msg.text ?? '';
-      if (content === '' && Array.isArray(msg.parts)) {
-        content = msg.parts
-          .filter((p: any) => p.type === 'text' && p.text != null)
-          .map((p: any) => p.text)
-          .join('');
+    const uiMessages: Omit<UIMessage, 'id'>[] = messages.map((msg: any) => {
+      const { id: _id, ...rest } = msg;
+      if (Array.isArray(msg.parts) && msg.parts.length > 0) {
+        return rest;
       }
+      const text = String(msg.content ?? msg.text ?? '');
       return {
-        role: (msg.role || 'user') as 'user' | 'assistant' | 'system',
-        content: String(content),
+        role: msg.role || 'user',
+        parts: [{ type: 'text' as const, text }],
       };
     });
 
-    const chatDto: ChatDto = { messages: chatMessages };
-
     try {
-      const result = await this.chatService.stream(chatDto, userId);
+      const result = await this.chatService.stream(uiMessages, userId);
       result.pipeUIMessageStreamToResponse(res as any);
     } catch (err) {
+      if (err instanceof HttpException) {
+        const status = err.getStatus();
+        const body = err.getResponse();
+        const msg = (() => {
+          if (typeof body === 'string') return body;
+          if (typeof body === 'object' && body !== null && 'message' in body) {
+            const m = (body as { message: string | string[] }).message;
+            return Array.isArray(m) ? m.join(', ') : String(m);
+          }
+          return err.message;
+        })();
+        console.error('[ChatController] stream error:', msg, err);
+        if (!res.headersSent) {
+          res.status(status).json({ error: msg });
+        } else {
+          res.end();
+        }
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       console.error('[ChatController] stream error:', message, err);
       if (!res.headersSent) {

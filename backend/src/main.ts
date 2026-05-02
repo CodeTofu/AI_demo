@@ -6,11 +6,16 @@ config({ path: '.env' });
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   console.log('Nest bootstrap starting...');
   const app = await NestFactory.create(AppModule);
+
+  // 多模态：前端会以 Data URL（base64）传图，需放宽 JSON 体积上限
+  app.use(json({ limit: '15mb' }));
+  app.use(urlencoded({ limit: '15mb', extended: true }));
 
   app.useWebSocketAdapter(new IoAdapter(app));
 

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { streamText, generateText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { ChatDto } from './dto/chat.dto';
+import { getLanguageModel } from './llm-language-model';
 import { INTENTS, IntentType, IntentResponseDto } from './dto/intent.dto';
 
 /**
@@ -11,32 +11,10 @@ import { INTENTS, IntentType, IntentResponseDto } from './dto/intent.dto';
 @Injectable()
 export class AiService {
   /**
-   * 获取配置的模型
-   * 支持 OpenAI 和 DeepSeek（兼容 OpenAI API 格式）
-   * 从环境变量读取配置
+   * 获取配置的模型（OpenAI 兼容 / DeepSeek / Gemini，见 llm-language-model.ts）
    */
   private getModel() {
-    // 从环境变量读取配置
-    const apiKey = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
-    const baseURL = process.env.OPENAI_API_BASE || process.env.DEEPSEEK_API_BASE;
-    const modelName = process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-
-    if (!apiKey || apiKey.trim() === '') {
-      throw new Error(
-        'AI API Key 未配置。请在 backend 目录下的 .env 中设置 OPENAI_API_KEY 或 DEEPSEEK_API_KEY。' +
-          '可复制 .env.example 为 .env 后填写。',
-      );
-    }
-
-    // 创建 OpenAI 客户端（兼容 DeepSeek、OpenAI 等）
-    const openaiClient = createOpenAI({
-      apiKey,
-      baseURL: baseURL || 'https://api.openai.com/v1', // DeepSeek 使用 https://api.deepseek.com
-    });
-
-    // 使用 chat 接口（/v1/chat/completions），DeepSeek 等兼容 OpenAI 的厂商都支持此接口
-    // 不要用默认的 openaiClient(modelName)，那会走 /v1/responses，仅 OpenAI 支持
-    return openaiClient.chat(modelName);
+    return getLanguageModel();
   }
 
   /**
