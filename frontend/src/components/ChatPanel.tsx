@@ -86,6 +86,16 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
 
   const { messages, sendMessage, status, error } = useChat({ transport });
   const isLoading = String(status) === 'in_progress';
+  const wasStreamingRef = useRef(false);
+
+  /** 一轮回复结束后再拉取资产总览（避免模型未触发工具时界面不刷新；与下方 tool 成功回调互补） */
+  useEffect(() => {
+    const busy = String(status) === 'in_progress';
+    if (wasStreamingRef.current && !busy) {
+      onHoldingsChange?.();
+    }
+    wasStreamingRef.current = busy;
+  }, [status, onHoldingsChange]);
 
   useEffect(() => {
     if (!onHoldingsChange) return;
@@ -141,12 +151,7 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
       alert(err instanceof Error ? err.message : '处理图片失败，请换一张图重试');
       return;
     }
-    if (!text && files?.length) {
-      parts.unshift({
-        type: 'text',
-        text: '请根据图片回答：简要说明图中可见的关键信息；若与基金、持仓相关请一并指出。',
-      });
-    }
+    /* 识图与落库规则由后端 SYSTEM_PROMPT + 工具说明约束，不必在前端再拼一大段提示词 */
 
     try {
       sendMessage({ role: 'user', parts });
@@ -250,7 +255,7 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="输入消息..."
+          placeholder="可输入问题，或上传持仓截图以识别并同步到持仓…"
           disabled={isLoading}
           className="chat-panel-input"
         />

@@ -3,7 +3,7 @@ import {
   createGoogleGenerativeAI,
   type GoogleGenerativeAIProviderSettings,
 } from '@ai-sdk/google';
-import type { LanguageModel } from 'ai';
+import { simulateStreamingMiddleware, wrapLanguageModel, type LanguageModel } from 'ai';
 import type { FetchFunction } from '@ai-sdk/provider-utils';
 import { fetch as undiciFetch, ProxyAgent } from 'undici';
 
@@ -17,6 +17,58 @@ function pickProxyUrlFromEnv(): string | undefined {
     process.env.https_proxy?.trim() ||
     process.env.http_proxy?.trim();
   return p || undefined;
+}
+
+/**
+ * DeepSeek「思考模式」下若走了工具调用，官方要求后续请求必须带回上一轮的 `reasoning_content`；
+ * Vercel AI SDK 的 OpenAI 兼容链路通常不会带上该字段，会触发 400：
+ * "The reasoning_content in the thinking mode must be passed back to the API."
+ *
+ * 默认在发往 DeepSeek 的 chat/completions 请求体里附加 `thinking: { type: 'disabled' }`，
+ * 关闭思考链，与流式 + 多轮工具调用兼容。
+ * 若确需思考链，可设 `DEEPSEEK_THINKING_MODE=enabled`（可能与工具多轮仍不兼容）。
+ */
+function shouldInjectDeepseekThinkingDisabled(): boolean {
+  return (process.env.DEEPSEEK_THINKING_MODE || '').trim().toLowerCase() !== 'enabled';
+}
+
+function augmentDeepseekChatCompletionsBody(init?: RequestInit): RequestInit | undefined {
+  if (!init?.body || typeof init.body !== 'string') return init;
+  if (!shouldInjectDeepseekThinkingDisabled()) return init;
+  try {
+    const parsed = JSON.parse(init.body) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object') return init;
+    if (parsed.thinking != null) return init;
+    parsed.thinking = { type: 'disabled' };
+    return { ...init, body: JSON.stringify(parsed) };
+  } catch {
+    return init;
+  }
+}
+
+function createDeepseekCompatFetch(): FetchFunction {
+  const base = globalThis.fetch.bind(globalThis);
+  return ((input, init) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (input as Request).url;
+    const m = init?.method?.toUpperCase();
+    if (url.includes('chat/completions') && (m === undefined || m === 'POST')) {
+      return base(input, augmentDeepseekChatCompletionsBody(init) ?? init);
+    }
+    return base(input, init);
+  }) as unknown as FetchFunction;
+}
+
+function createOpenAIClientForDeepseek(apiKey: string, baseURL: string) {
+  return createOpenAI({
+    apiKey,
+    baseURL,
+    fetch: createDeepseekCompatFetch(),
+  });
 }
 
 /**
@@ -63,9 +115,22 @@ export function getDashscopeApiKey(): string | undefined {
 
 const DEFAULT_DASHSCOPE_OPENAI_BASE = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 const DEFAULT_DASHSCOPE_VL_MODEL = 'qwen-vl-plus';
+/** 纯文本默认走百炼兼容接口时的模型（与多模态 VL 分开配置） */
+const DEFAULT_DASHSCOPE_CHAT_MODEL = 'qwen-turbo';
+
+function getDashscopeCompatibleBaseUrl(): string {
+  return (
+    process.env.DASHSCOPE_BASE?.trim() ||
+    process.env.DASHSCOPE_OPENAI_BASE?.trim() ||
+    DEFAULT_DASHSCOPE_OPENAI_BASE
+  ).replace(/\/$/, '');
+}
 
 /**
  * 千问多模态（OpenAI 兼容端点），用于聊天中带图；国内直连，无需访问 Google。
+ *
+ * 套上 simulateStreamingMiddleware：百炼在「流式 chat/completions」下有时不按 tool_choice 返回工具调用，
+ * 非流式 doGenerate 行为更稳定；该中间件把内部改为单次 generate，再由 SDK 模拟文本流，便于强制工具 + 多轮工具衔接。
  */
 export function createDashscopeVlLanguageModelFromEnv(): LanguageModel {
   const apiKey = getDashscopeApiKey();
@@ -74,18 +139,18 @@ export function createDashscopeVlLanguageModelFromEnv(): LanguageModel {
       '上传图片需使用千问视觉：请在 backend/.env 配置 DASHSCOPE_API_KEY 或 QWEN_API_KEY（阿里云百炼）。',
     );
   }
-  const baseURL = (
-    process.env.DASHSCOPE_BASE?.trim() ||
-    process.env.DASHSCOPE_OPENAI_BASE?.trim() ||
-    DEFAULT_DASHSCOPE_OPENAI_BASE
-  ).replace(/\/$/, '');
+  const baseURL = getDashscopeCompatibleBaseUrl();
   const modelId = (
     process.env.DASHSCOPE_VL_MODEL?.trim() ||
     process.env.QWEN_VL_MODEL?.trim() ||
     DEFAULT_DASHSCOPE_VL_MODEL
   );
   const client = createOpenAI({ apiKey, baseURL });
-  return client.chat(modelId);
+  const base = client.chat(modelId);
+  return wrapLanguageModel({
+    model: base,
+    middleware: simulateStreamingMiddleware(),
+  });
 }
 
 function missingKeyMessage(): string {
@@ -100,7 +165,7 @@ function missingKeyMessage(): string {
  * - `AI_PROVIDER=google` | `gemini`：使用 Gemini（默认模型 gemini-1.5-flash）
  * - `AI_PROVIDER=openai`：仅用 OPENAI_API_KEY
  * - `AI_PROVIDER=deepseek`：仅用 DEEPSEEK_API_KEY
- * - 未设置 AI_PROVIDER：按优先级 OPENAI_API_KEY → Gemini Key → DEEPSEEK_API_KEY
+ * - 未设置 AI_PROVIDER：按优先级 OPENAI → DeepSeek → DashScope 文本 → Gemini（避免国内默认落到 Google 超时）
  */
 export function resolveChatLanguageModel(): {
   model: LanguageModel;
@@ -110,6 +175,7 @@ export function resolveChatLanguageModel(): {
   const gKey = getGoogleGenerativeAiApiKey();
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
+  const dashscopeKey = getDashscopeApiKey();
 
   const geminiModelId = (
     process.env.GEMINI_MODEL ||
@@ -137,11 +203,11 @@ export function resolveChatLanguageModel(): {
     if (!deepseekKey) throw new Error('AI_PROVIDER=deepseek 时需配置 DEEPSEEK_API_KEY。');
     const baseURL = process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1';
     const modelName = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-    const client = createOpenAI({ apiKey: deepseekKey, baseURL });
+    const client = createOpenAIClientForDeepseek(deepseekKey, baseURL);
     return { model: client.chat(modelName), providerKind: 'deepseek' };
   }
 
-  // ----- 未设置 AI_PROVIDER：按 Key 优先级自动选择 -----
+  // ----- 未设置 AI_PROVIDER：优先国内/可直连，Gemini 置后 -----
   if (openaiKey) {
     const baseURL = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
     const modelName = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -149,16 +215,27 @@ export function resolveChatLanguageModel(): {
     return { model: client.chat(modelName), providerKind: 'openai_compatible' };
   }
 
-  if (gKey) {
-    const google = createGoogleGenerativeAI(buildGoogleGenerativeAISettings(gKey));
-    return { model: google(geminiModelId), providerKind: 'gemini' };
-  }
-
   if (deepseekKey) {
     const baseURL = process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1';
     const modelName = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-    const client = createOpenAI({ apiKey: deepseekKey, baseURL });
+    const client = createOpenAIClientForDeepseek(deepseekKey, baseURL);
     return { model: client.chat(modelName), providerKind: 'deepseek' };
+  }
+
+  if (dashscopeKey) {
+    const baseURL = getDashscopeCompatibleBaseUrl();
+    const chatModel = (
+      process.env.DASHSCOPE_CHAT_MODEL?.trim() ||
+      process.env.QWEN_CHAT_MODEL?.trim() ||
+      DEFAULT_DASHSCOPE_CHAT_MODEL
+    );
+    const client = createOpenAI({ apiKey: dashscopeKey, baseURL });
+    return { model: client.chat(chatModel), providerKind: 'openai_compatible' };
+  }
+
+  if (gKey) {
+    const google = createGoogleGenerativeAI(buildGoogleGenerativeAISettings(gKey));
+    return { model: google(geminiModelId), providerKind: 'gemini' };
   }
 
   throw new Error(missingKeyMessage());

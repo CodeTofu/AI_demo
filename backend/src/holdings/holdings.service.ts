@@ -12,6 +12,9 @@ export interface RecordHoldingInput {
   profitLoss: number;
 }
 
+/** 更新持仓时无需再传基金代码 */
+export type UpdateHoldingInput = Pick<RecordHoldingInput, 'currentValue' | 'profitLoss'>;
+
 /** 单条持仓仅展示：当前持仓、持仓收益、持仓收益率（不展示份额） */
 export interface HoldingWithProfit {
   id: number;
@@ -129,6 +132,47 @@ export class HoldingsService {
         profitLossPercent: (profitLoss >= 0 ? '+' : '') + profitLossPercent,
       },
     };
+  }
+
+  /**
+   * 新增或更新：同一用户下同一代码仅一条持仓；已存在则更新市值与收益，否则新增。
+   */
+  async recordOrUpdateHolding(
+    userId: number,
+    input: RecordHoldingInput,
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    holding?: {
+      id: number;
+      code: string;
+      name: string;
+      currentValue: number;
+      profitLoss: number;
+      profitLossPercent: string;
+    };
+    updated?: boolean;
+  }> {
+    const existing = await this.prisma.holding.findFirst({
+      where: { userId, code: input.code },
+      select: { id: true },
+    });
+    if (existing) {
+      const u = await this.updateHolding(userId, existing.id, {
+        currentValue: input.currentValue,
+        profitLoss: input.profitLoss,
+      });
+      if (!u.ok) return { ...u, updated: true };
+      return {
+        ok: true,
+        message: `${u.message}（该基金已有记录，本次为截图同步覆盖更新）`,
+        holding: u.holding,
+        updated: true,
+      };
+    }
+    const r = await this.recordHolding(userId, input);
+    if (!r.ok) return r;
+    return { ...r, updated: false };
   }
 
   /**
@@ -264,6 +308,132 @@ export class HoldingsService {
       profitRate: (totalProfit >= 0 ? '+' : '') + profitRate,
       holdingCount: holdings.length,
       holdings,
+    };
+  }
+
+  /**
+   * 更新持仓：规则与 recordHolding 相同（当前持仓市值 + 持仓收益 → 反推 costTotal / costPrice）
+   */
+  async updateHolding(
+    userId: number,
+    holdingId: number,
+    input: UpdateHoldingInput,
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    holding?: {
+      id: number;
+      code: string;
+      name: string;
+      currentValue: number;
+      profitLoss: number;
+      profitLossPercent: string;
+    };
+  }> {
+    const existing = await this.prisma.holding.findFirst({
+      where: { id: holdingId, userId },
+    });
+    if (!existing) {
+      return { ok: false, message: '持仓不存在或无权操作' };
+    }
+
+    const { currentValue, profitLoss } = input;
+    if (currentValue <= 0) {
+      return { ok: false, message: '当前持仓金额必须大于 0' };
+    }
+    const costTotal = currentValue - profitLoss;
+    if (costTotal <= 0) {
+      return {
+        ok: false,
+        message: '根据当前持仓与收益推算出的成本必须大于 0，请检查收益是否填写正确',
+      };
+    }
+
+    const code = existing.code;
+    let name = existing.name;
+    let currentPrice = existing.costPrice > 0 ? existing.costPrice : 1;
+    try {
+      const info = await this.fundService.getFundInfo(code);
+      if (info?.name && info.name !== `基金${code}`) name = info.name;
+      const p = parseFloat(info.netValue);
+      if (!Number.isNaN(p) && p > 0) currentPrice = p;
+    } catch {
+      // 保留已有名称与价格参考
+    }
+
+    const amount = currentValue / currentPrice;
+    const costPrice = amount > 0 ? costTotal / amount : costTotal;
+
+    const holding = await this.prisma.holding.update({
+      where: { id: holdingId },
+      data: { name, costTotal, costPrice },
+    });
+
+    const profitLossPercent =
+      costTotal > 0 ? ((profitLoss / costTotal) * 100).toFixed(2) + '%' : '0%';
+
+    this.realtime.notifyPortfolioChanged(userId);
+
+    return {
+      ok: true,
+      message: `已更新持仓：${name}（${code}），当前持仓 ¥${currentValue.toFixed(2)}，持仓收益 ${profitLoss >= 0 ? '+' : ''}¥${profitLoss.toFixed(2)}，收益率 ${profitLoss >= 0 ? '+' : ''}${profitLossPercent}`,
+      holding: {
+        id: holding.id,
+        code: holding.code,
+        name: holding.name,
+        currentValue,
+        profitLoss,
+        profitLossPercent: (profitLoss >= 0 ? '+' : '') + profitLossPercent,
+      },
+    };
+  }
+
+  async deleteHolding(
+    userId: number,
+    holdingId: number,
+  ): Promise<{ ok: boolean; message: string }> {
+    const result = await this.prisma.holding.deleteMany({
+      where: { id: holdingId, userId },
+    });
+    if (result.count === 0) {
+      return { ok: false, message: '持仓不存在或无权操作' };
+    }
+    this.realtime.notifyPortfolioChanged(userId);
+    return { ok: true, message: '已删除该持仓' };
+  }
+
+  /** 按 6 位基金代码删除该用户下对应持仓（同代码多条则一并删） */
+  async deleteHoldingByCode(
+    userId: number,
+    code: string,
+  ): Promise<{ ok: boolean; message: string; deletedCount: number }> {
+    const result = await this.prisma.holding.deleteMany({
+      where: { userId, code },
+    });
+    if (result.count === 0) {
+      return { ok: false, message: '未找到该基金代码的持仓', deletedCount: 0 };
+    }
+    this.realtime.notifyPortfolioChanged(userId);
+    return {
+      ok: true,
+      message: `已删除基金 ${code} 的持仓，共 ${result.count} 条`,
+      deletedCount: result.count,
+    };
+  }
+
+  /** 清空当前用户全部持仓 */
+  async deleteAllHoldings(
+    userId: number,
+  ): Promise<{ ok: boolean; message: string; deletedCount: number }> {
+    const result = await this.prisma.holding.deleteMany({ where: { userId } });
+    this.realtime.notifyPortfolioChanged(userId);
+    return {
+      ok: true,
+      message:
+        result.count === 0
+          ? '当前本就没有持仓记录'
+          : `已清空全部持仓，共删除 ${result.count} 条`,
+      deletedCount: result.count,
     };
   }
 }

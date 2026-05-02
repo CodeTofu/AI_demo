@@ -51,3 +51,26 @@ export async function getSummary(): Promise<GetSummaryResult> {
   const { data } = await api.get<GetSummaryResult>('/holdings/summary');
   return data;
 }
+
+export interface UpdateHoldingBody {
+  currentValue: number;
+  profitLoss: number;
+}
+
+/** PATCH /api/holdings/:id */
+export async function updateHolding(
+  id: number,
+  body: UpdateHoldingBody,
+): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.patch<{ ok: boolean; message: string }>(
+    `/holdings/${id}`,
+    body,
+  );
+  return data;
+}
+
+/** DELETE /api/holdings/:id */
+export async function deleteHolding(id: number): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.delete<{ ok: boolean; message: string }>(`/holdings/${id}`);
+  return data;
+}

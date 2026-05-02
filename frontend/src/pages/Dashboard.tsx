@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
 import {
@@ -7,10 +7,12 @@ import {
   TrendingDown,
   PieChart as PieChartIcon,
   List,
-  ChevronRight,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import type { GetSummaryResult } from '../api/holdings';
+import type { GetSummaryResult, SummaryHoldingItem } from '../api/holdings';
+import { deleteHolding, updateHolding } from '../api/holdings';
 import { getBffDashboard, type BffDashboardResponse } from '../api/bff';
 import { ChatPanel } from '../components/ChatPanel';
 import { isAuthenticated } from '../utils/auth';
@@ -21,6 +23,12 @@ const BFF_DASHBOARD_SWR_KEY = 'bff-dashboard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState<SummaryHoldingItem | null>(null);
+  const [editCurrentValue, setEditCurrentValue] = useState('');
+  const [editProfitLoss, setEditProfitLoss] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
   const { data, error, isLoading, mutate } = useSWR<BffDashboardResponse>(
     BFF_DASHBOARD_SWR_KEY,
     getBffDashboard,
@@ -40,6 +48,55 @@ export default function Dashboard() {
   const profitRate = summary?.profitRate ?? '0%';
   const holdingCount = summary?.holdingCount ?? 0;
   const isProfit = totalProfit >= 0;
+
+  function openEdit(h: SummaryHoldingItem) {
+    setEditRow(h);
+    setEditCurrentValue(String(h.currentValue));
+    setEditProfitLoss(String(h.profitLoss));
+    setEditOpen(true);
+  }
+
+  async function submitEdit() {
+    if (!editRow) return;
+    const currentValue = parseFloat(editCurrentValue);
+    const profitLoss = parseFloat(editProfitLoss);
+    if (!Number.isFinite(currentValue) || !Number.isFinite(profitLoss)) {
+      alert('请输入有效的数字');
+      return;
+    }
+    setEditSubmitting(true);
+    try {
+      await updateHolding(editRow.id, { currentValue, profitLoss });
+      setEditOpen(false);
+      setEditRow(null);
+      await mutate();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string | string[] } } }).response?.data
+              ?.message
+          : undefined;
+      alert(
+        Array.isArray(msg) ? msg.join('，') : msg || (err instanceof Error ? err.message : '更新失败'),
+      );
+    } finally {
+      setEditSubmitting(false);
+    }
+  }
+
+  async function handleDelete(h: SummaryHoldingItem) {
+    if (!window.confirm(`确定删除「${h.name}（${h.code}）」的持仓记录？`)) return;
+    try {
+      await deleteHolding(h.id);
+      await mutate();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      alert(msg || (err instanceof Error ? err.message : '删除失败'));
+    }
+  }
 
   const pieData =
     summary?.holdings.map((h, i) => ({
@@ -195,7 +252,24 @@ export default function Dashboard() {
                             <span className="dashboard-holding-name">{h.name}</span>
                             <span className="dashboard-holding-code">（{h.code}）</span>
                           </span>
-                          <ChevronRight className="dashboard-holding-chevron" />
+                          <div className="dashboard-holding-actions">
+                            <button
+                              type="button"
+                              className="dashboard-holding-action-btn"
+                              aria-label={`编辑 ${h.name}`}
+                              onClick={() => openEdit(h)}
+                            >
+                              <Pencil size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              className="dashboard-holding-action-btn dashboard-holding-action-btn--danger"
+                              aria-label={`删除 ${h.name}`}
+                              onClick={() => handleDelete(h)}
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </div>
                         <div className="dashboard-holding-metrics">
                           <div className="dashboard-holding-metric">
@@ -240,6 +314,68 @@ export default function Dashboard() {
           <ChatPanel onHoldingsChange={mutate} />
         </section>
       </div>
+
+      {editOpen && editRow && (
+        <div
+          className="dashboard-edit-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dashboard-edit-title"
+        >
+          <div className="dashboard-edit-modal">
+            <h2 id="dashboard-edit-title" className="dashboard-edit-title">
+              编辑持仓
+            </h2>
+            <p className="dashboard-edit-sub">
+              {editRow.name}（{editRow.code}）
+            </p>
+            <p className="dashboard-edit-hint">
+              与对话记账规则一致：填写当前持仓市值（元）与持仓收益（元），系统将反推成本。
+            </p>
+            <label className="dashboard-edit-field">
+              <span>当前持仓金额（元）</span>
+              <input
+                type="number"
+                step="any"
+                value={editCurrentValue}
+                onChange={(e) => setEditCurrentValue(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+            <label className="dashboard-edit-field">
+              <span>持仓收益（元，可负）</span>
+              <input
+                type="number"
+                step="any"
+                value={editProfitLoss}
+                onChange={(e) => setEditProfitLoss(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+            <div className="dashboard-edit-actions">
+              <button
+                type="button"
+                className="dashboard-edit-cancel"
+                disabled={editSubmitting}
+                onClick={() => {
+                  setEditOpen(false);
+                  setEditRow(null);
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="dashboard-edit-save"
+                disabled={editSubmitting}
+                onClick={() => void submitEdit()}
+              >
+                {editSubmitting ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
