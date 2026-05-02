@@ -1,5 +1,6 @@
 .chat-panel {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -312,4 +313,63 @@
 .chat-panel-messages::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 10px;
+}
+
+.chat-panel-messages-anchor {
+  height: 1px;
+  flex-shrink: 0;
+}
+
+.chat-panel-message-pending {
+  opacity: 0.96;
+}
+
+.chat-panel-typing-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.chat-panel-typing-inline {
+  margin-top: 8px;
+}
+
+.chat-panel-typing-text {
+  font-weight: 500;
+}
+
+.chat-panel-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-panel-typing-dots > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+  animation: chatPanelTypingDot 1.2s ease-in-out infinite both;
+}
+
+.chat-panel-typing-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.chat-panel-typing-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes chatPanelTypingDot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(1px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
 }

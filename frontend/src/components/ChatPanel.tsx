@@ -85,8 +85,27 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
   );
 
   const { messages, sendMessage, status, error } = useChat({ transport });
-  const isLoading = String(status) === 'in_progress';
+  const isLoading =
+    String(status) === 'in_progress' ||
+    String(status) === 'streaming' ||
+    String(status) === 'submitted';
+  /** 从点击发送到服务端创建助手消息之间的间隙，仅靠 isLoading 往往来不及切换 */
+  const [awaitingAssistant, setAwaitingAssistant] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const wasStreamingRef = useRef(false);
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last?.role === 'assistant') setAwaitingAssistant(false);
+  }, [messages]);
+
+  useEffect(() => {
+    if (error) setAwaitingAssistant(false);
+  }, [error]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, awaitingAssistant, isLoading, error]);
 
   /** 一轮回复结束后再拉取资产总览（避免模型未触发工具时界面不刷新；与下方 tool 成功回调互补） */
   useEffect(() => {
@@ -153,16 +172,34 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
     }
     /* 识图与落库规则由后端 SYSTEM_PROMPT + 工具说明约束，不必在前端再拼一大段提示词 */
 
+    setAwaitingAssistant(true);
     try {
       sendMessage({ role: 'user', parts });
     } catch (err) {
       console.error('[ChatPanel] sendMessage', err);
+      setAwaitingAssistant(false);
       alert(err instanceof Error ? err.message : '发送失败');
       return;
     }
     setInput('');
     clearPendingFile();
   };
+
+  const lastMessage = messages[messages.length - 1];
+  /** 用户已发出，但助手消息尚未插入列表（典型：fetch / SSE 建立前） */
+  const showDetachedThinking =
+    awaitingAssistant && lastMessage?.role === 'user';
+
+  function assistantNeedsTypingPlaceholder(message: (typeof messages)[number]): boolean {
+    if (message.role !== 'assistant' || !isLoading) return false;
+    const parts = message.parts ?? [];
+    if (parts.length === 0) return true;
+    return !parts.some(
+      (p) =>
+        (p.type === 'text' && (p as { text?: string }).text?.trim()) ||
+        (p.type === 'reasoning' && (p as { text?: string }).text?.trim()),
+    );
+  }
 
   return (
     <div className="chat-panel">
@@ -205,7 +242,30 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
                       />
                     ) : null
                   )
-                : (message as { content?: string }).content ?? ''}
+                : message.role === 'assistant' && assistantNeedsTypingPlaceholder(message) ? (
+                    <div className="chat-panel-typing-row" aria-live="polite">
+                      <span className="chat-panel-typing-dots" aria-hidden>
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                      <span className="chat-panel-typing-text">正在回复…</span>
+                    </div>
+                  ) : (
+                    (message as { content?: string }).content ?? ''
+                  )}
+              {message.role === 'assistant' &&
+                message.parts?.length > 0 &&
+                assistantNeedsTypingPlaceholder(message) && (
+                  <div className="chat-panel-typing-row chat-panel-typing-inline" aria-live="polite">
+                    <span className="chat-panel-typing-dots" aria-hidden>
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                    <span className="chat-panel-typing-text">正在回复…</span>
+                  </div>
+                )}
             </div>
             {message.role === 'assistant' &&
               message.parts?.map((part, index) => {
@@ -229,14 +289,24 @@ export function ChatPanel({ onHoldingsChange }: ChatPanelProps) {
               })}
           </div>
         ))}
-        {isLoading && (
-          <div className="chat-panel-message ai">
+        {showDetachedThinking && (
+          <div className="chat-panel-message ai chat-panel-message-pending">
             <div className="chat-panel-message-role">🤖 AI</div>
             <div className="chat-panel-message-content">
-              <span className="typing-indicator">正在思考...</span>
+              <div className="chat-panel-typing-row" aria-live="polite">
+                <span className="chat-panel-typing-dots" aria-hidden>
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="chat-panel-typing-text">
+                  {isLoading ? '正在回复…' : '连接中…'}
+                </span>
+              </div>
             </div>
           </div>
         )}
+        <div ref={messagesEndRef} className="chat-panel-messages-anchor" aria-hidden />
       </div>
       <form onSubmit={handleSubmit} className="chat-panel-form">
         <label className="chat-panel-image-picker">

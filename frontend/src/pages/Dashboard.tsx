@@ -35,8 +35,7 @@ export default function Dashboard() {
     { revalidateOnFocus: true }
   );
 
-  const { connected: wsConnected, lastEvent: wsLastEvent, lastPongMs, sendPing } =
-    usePortfolioRealtime(mutate);
+  const { connected: wsConnected, lastPongMs, sendPing } = usePortfolioRealtime(mutate);
 
   useEffect(() => {
     if (!isAuthenticated()) navigate('/login');
@@ -122,10 +121,6 @@ export default function Dashboard() {
             <div className="dashboard-board-header-row">
               <div>
                 <h1>资产总览</h1>
-                <p>
-                  {data?.user?.name != null ? `${data.user.name} · ` : ''}
-                  实时净值 · 盈亏一目了然
-                </p>
               </div>
               <div className="dashboard-ws-panel" title="Socket.IO /realtime 实时通道">
                 <span
@@ -148,9 +143,6 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-            {wsLastEvent && (
-              <p className="dashboard-ws-hint">{wsLastEvent}</p>
-            )}
           </header>
 
           {error && (
@@ -219,9 +211,7 @@ export default function Dashboard() {
                           innerRadius={50}
                           outerRadius={80}
                           paddingAngle={2}
-                          label={({ name, percent }) =>
-                            `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                          }
+                          label={false}
                         >
                           {pieData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
