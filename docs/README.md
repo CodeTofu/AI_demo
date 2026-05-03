@@ -13,6 +13,7 @@
 ## 📄 根目录文档（项目总览）
 
 - [BACKEND_CHAT_FLOW.md](./BACKEND_CHAT_FLOW.md) - **聊天接口全流程**（从前端请求到返回，含代码位置，面向前端）
+- [CHAT_MULTIMODAL_AND_MODEL_ROUTING.md](./CHAT_MULTIMODAL_AND_MODEL_ROUTING.md) - **多模态聊天**：图片传输、Data URL 归一化、动态模型（含千问 VL）、多步 `prepareStep` 剥图与上下文取舍
 - [START_PROJECT.md](./START_PROJECT.md) - 项目启动指南
 - [VERCEL_AI_SDK_INTRO.md](./VERCEL_AI_SDK_INTRO.md) - Vercel AI SDK 简介
 - [AI_SDK_SETUP.md](./AI_SDK_SETUP.md) - AI SDK 集成说明

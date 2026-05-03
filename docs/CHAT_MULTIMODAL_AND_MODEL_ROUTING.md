@@ -1,0 +1,142 @@
+# 聊天多模态：图片传输、模型路由与多步去图策略
+
+本文档沉淀 **基金助手聊天** 中与「带图对话」相关的实现原理、环境配置、易错点，以及曾集中讨论过的 **Data URL 归一化**、**prepareStep 剥图**、**后续 step 是否丢失图像语义** 等问题，便于新人理解与评审。
+
+相关代码：
+
+- 前端：`frontend/src/components/ChatPanel.tsx`
+- 后端：`backend/src/main.ts`、`backend/src/ai/chat.service.ts`、`backend/src/ai/llm-language-model.ts`
+
+---
+
+## 一、图片在项目里是怎么传的
+
+### 1. 前端
+
+- 使用隐藏的 `<input type="file" accept="image/*">` 选择本地图片；预览用 `URL.createObjectURL`，并在卸载或重新选图时用 `revokeObjectURL` 释放，避免泄漏。
+- 单张大小上限 **4MB**（`MAX_IMAGE_BYTES`），超限则提示用户。
+- 使用 Vercel AI UI 提供的 **`convertFileListToFileUIParts`**，将文件转为 **`FileUIPart`**，与用户输入的 **`text`** 一并放入 **`parts`**，通过 **`sendMessage({ role: 'user', parts })`** 发送。
+- **`DefaultChatTransport`** 使用 **`Content-Type: application/json`**，请求发往 **`/api/chat`**。图片随消息体进入 JSON，典型形态为 **`data:image/...;base64,...`** 嵌在 **`file` / 图片部件**中，**不是**单独的 `multipart/form-data` 文件上传接口。
+
+### 2. 后端
+
+- **`convertToModelMessages`**（Vercel AI SDK）将 UI 消息转为供给模型的 **`ModelMessage`**。
+- 随后执行 **`normalizeDataUrlImagesInModelMessages`**（见下一节），再进入 **`streamText`**。
+- **`main.ts`** 将 Express **`json` / `urlencoded`** 体积上限设为 **15mb**，否则大图 base64 会导致请求在解析阶段被拒绝。
+
+---
+
+## 二、为什么必须做「Data URL → Uint8Array」归一化
+
+### 现象
+
+兼容 **OpenAI Chat Completions** 形态的客户端（如 `@ai-sdk/openai` 的 `createOpenAI`）在构造请求时，对「图片」字段常按 **URL** 校验：许多实现只接受 **`http://` / `https://`**。前端传来的 **`data:image/png;base64,...`** 字符串**不符合**该规则，会在**发往上游之前的校验阶段**失败，错误往往表现为「非法 URL」—即文档里说的 **「在校验阶段就失败」**，请求尚未稳定发出。
+
+### 做法
+
+在 **`chat.service.ts`** 中：
+
+- **`dataUrlToUint8Array`**：把 `data:...;base64,...` 解码为 **`Uint8Array`**（原始字节）。
+- **`normalizeDataUrlImagesInModelMessages`**：遍历用户消息中的多段内容，将
+  - `type: 'image'` 且 `image` 为 Data URL 字符串，或
+  - `type: 'file'` 且 `data`/`url` 为图片 Data URL  
+  统一换成 **`{ type: 'image', image: Uint8Array, ... }`**，走 SDK 支持的**二进制图片**通路。
+
+**一句话**：不是「多此一举」，而是让兼容端把内容当**字节**发出去，而不是当「必须是 http 的 URL 字符串」去校验。
+
+---
+
+## 三、动态选择模型（默认聊天模型 vs 带图时的视觉模型）
+
+### 1. 默认文本 / 通用聊天模型：`resolveChatLanguageModel()`
+
+定义于 **`backend/src/ai/llm-language-model.ts`**，由环境变量决定：
+
+- **`AI_PROVIDER`** 显式为 `google` / `gemini`、`openai`、`deepseek` 时，走对应 Key 与模型名。
+- **未设置 `AI_PROVIDER`** 时，按优先级尝试：**OpenAI Key → DeepSeek Key → 阿里云百炼文本（如 `qwen-turbo`）→ Gemini**，避免国内环境默认落到难以直连的服务。
+
+具体模型名见 **`OPENAI_MODEL`、`DEEPSEEK_MODEL`、`GEMINI_MODEL`、`DASHSCOPE_CHAT_MODEL`** 等，以 **`env.example`** 与 **`llm-language-model.ts`** 为准。
+
+### 2. 本轮用户消息带图时：切换到千问视觉（VL）
+
+在 **`ChatService.stream()`** 中：
+
+1. 先用 **`convertToModelMessages`** + **`normalizeDataUrlImagesInModelMessages`** 得到 **`messagesForProvider`**。
+2. 调用 **`resolveChatLanguageModel()`** 得到默认 **`model`**。
+3. 使用 **`lastUserMessageHasImage(messages)`** 判断：**仅当最后一条用户消息**中含图片部件时，视为 **「本轮需要视觉」**，将 **`model`** 替换为 **`createDashscopeVlLanguageModelFromEnv()`**（阿里云百炼 OpenAI 兼容端 + 默认 **`qwen-vl-plus`**，可通过 **`DASHSCOPE_VL_MODEL` / `QWEN_VL_MODEL`** 覆盖）。
+4. 若需带图但未配置 **`DASHSCOPE_API_KEY` / `QWEN_API_KEY`**，会抛出明确错误，提示需配置百炼。
+
+**注意**：**只看「最后一条用户消息」是否带图**。用户下一条只发纯文字时，不会把整段历史都当成多模态回合，从而错误地一直锁定 VL 模型。
+
+### 3. 纯文本模型 + 历史里曾出现过图
+
+若 **本轮无图**，但历史消息里某条用户消息曾带图（**`anyUserMessageHasImage`**），部分纯文本模型无法正确处理 OpenAI 兼容体里残留的 **`image_url`** 等结构。此时会对发往模型的消息做一次 **`stripNonTextUserParts`**（见第五节），用占位文本替换非 text 部件，避免请求失败。
+
+---
+
+## 四、`prepareStep` 与从第二步起「剥图」是什么意思
+
+### 背景：`streamText` 的多步（multi-step）
+
+启用工具时，**第一轮**模型可能返回 **tool_calls**；**后续 step** 会把 **工具执行结果**再送给模型，可能继续生成或再次调用工具。每一步往上游发请求时，往往会带上**完整对话历史**。
+
+### 策略（`chat.service.ts`）
+
+当 **`currentTurnHasImage`**（本轮最后一条用户消息带图）为真时：
+
+- **`prepareStep`** 中：若 **`stepNumber >= 1`**（从第二步起），对用户消息执行 **`stripNonTextUserParts`**：
+  - 保留 **`type: 'text'`** 的段落；
+  - 将 **image / file** 等非文本段落替换为一段**固定占位说明**（大意：此处原为图片等非文本内容，多轮工具请求中已替换为纯文本，请结合前文与工具返回继续执行）。
+
+### 为什么要这么做
+
+部分上游在 **第二次、第三次** 请求中仍序列化整段历史里的**大图二进制**或特殊 **image** 结构时，会出现 **400、反序列化失败或体积极大** 等问题。因此：
+
+- **第一步（step 0）**：保留真实图片，让模型**看见图**并决定是否调用工具、填什么参数。
+- **从第二步起**：不再重复携带像素，改为占位文案，**优先保证多轮工具调用稳定**。
+
+---
+
+## 五、后续请求不带图，模型会不会「看不懂上下文」（重点问答沉淀）
+
+### 会丢失什么
+
+从第二步起，请求里**不再包含像素**，模型在后续 step **无法再次「看图」**，只能依赖历史中已有的 **文本、助手输出、工具返回**。
+
+### 通常为什么还能对齐上下文
+
+- **第一步**已经基于图像完成了是否需要工具、参数如何填写等判断。
+- **工具返回**（如 `getFundDetails`、`recordHolding` 的结果）是**结构化事实**，后续 step 主要围绕这些结果组织回复或继续调工具，**往往不需要再读原图**。
+- **占位文案**提醒模型「这里曾有过图片」，避免误以为用户从未发图。
+- 若第一步在调工具前输出了少量 **assistant 文本**（意图归纳等），也会留在历史中。
+
+### 何时可能出现「语义变弱」或不清晰
+
+- 第一步几乎只有 **tool_calls**，没有自然语言，且工具返回也**未覆盖**你想从图中得到的全部细节。
+- 第二步仍依赖 **同一截图里尚未在第一轮提取** 的另一类视觉细节（例如同一画面要分多轮、靠「再盯边角」才能识别的内容）。
+
+这是 **「多轮请求稳定性」与「多轮仍可反复读图」之间的取舍**；当前实现明确倾向前者。
+
+### 若业务强依赖「多轮都细看同一张图」
+
+需要在产品或架构上另行增强（例如：首轮让模型输出**简短文字摘要**并注入后续轮次、或拆分用户操作等），本文档只描述**现有行为**及其边界。
+
+---
+
+## 六、其余实现要点速查
+
+| 项目 | 说明 |
+|------|------|
+| 请求体大小 | `main.ts`：`json`/`urlencoded` **15mb**，适配 base64 大图 |
+| 系统提示 | `SYSTEM_PROMPT` 中区分「识图」与「是否必须调用基金工具」，避免见截图就乱写库 |
+| 千问 VL 封装 | `createDashscopeVlLanguageModelFromEnv` 使用 `wrapLanguageModel` + `simulateStreamingMiddleware`，以改善百炼流式场景下工具调用表现 |
+| DeepSeek | `llm-language-model.ts` 中对 DeepSeek 请求体注入 `thinking: disabled` 等，与多轮工具兼容（详见该文件注释） |
+
+---
+
+## 七、与现有文档的关系
+
+- 聊天接口整体 HTTP / JWT / 流式响应路径：见 **[BACKEND_CHAT_FLOW.md](./BACKEND_CHAT_FLOW.md)**。
+- AI 环境变量与提供商说明：见 **`docs/backend/AI_API_CONFIG.md`**、**`env.example`**。
+
+本文专注 **多模态链路与模型路由**及上述设计权衡，与接口路径细节互补。
