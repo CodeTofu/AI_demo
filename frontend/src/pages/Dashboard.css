@@ -129,7 +129,7 @@
 
 .dashboard-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -197,28 +197,9 @@
   color: #16a34a;
 }
 
-.dashboard-pie-wrap {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  border: 1px solid #f1f5f9;
-}
-
-.dashboard-pie-title {
-  margin: 0 0 12px 0;
-  font-size: 15px;
+.dashboard-stat-value--muted {
+  color: #94a3b8;
   font-weight: 600;
-  color: #334155;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.dashboard-pie-chart {
-  width: 100%;
-  height: 220px;
 }
 
 /* 持仓列表 - 卡片式（参考：基金名 + 金额 / 成本 / 持仓收益率） */
@@ -308,7 +289,7 @@
 .dashboard-holding-name-wrap {
   display: flex;
   align-items: baseline;
-  gap: 2px;
+  gap: 6px;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -318,7 +299,7 @@
   font-size: 16px;
   font-weight: 700;
   color: #1e293b;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -334,8 +315,14 @@
 
 .dashboard-holding-metrics {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+}
+
+@media (max-width: 720px) {
+  .dashboard-holding-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .dashboard-holding-metric {
@@ -353,6 +340,11 @@
   font-size: 15px;
   font-weight: 600;
   color: #1e293b;
+}
+
+.dashboard-holding-metric-na {
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 .dashboard-holding-profit.up {

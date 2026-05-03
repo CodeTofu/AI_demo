@@ -5,12 +5,11 @@ import {
   Wallet,
   TrendingUp,
   TrendingDown,
-  PieChart as PieChartIcon,
+  CalendarDays,
   List,
   Pencil,
   Trash2,
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import type { GetSummaryResult, SummaryHoldingItem } from '../api/holdings';
 import { deleteHolding, updateHolding } from '../api/holdings';
 import { getBffDashboard, type BffDashboardResponse } from '../api/bff';
@@ -32,7 +31,11 @@ export default function Dashboard() {
   const { data, error, isLoading, mutate } = useSWR<BffDashboardResponse>(
     BFF_DASHBOARD_SWR_KEY,
     getBffDashboard,
-    { revalidateOnFocus: true }
+    {
+      revalidateOnFocus: true,
+      revalidateOnMount: true,
+      dedupingInterval: 0,
+    },
   );
 
   const { connected: wsConnected, lastPongMs, sendPing } = usePortfolioRealtime(mutate);
@@ -47,6 +50,9 @@ export default function Dashboard() {
   const profitRate = summary?.profitRate ?? '0%';
   const holdingCount = summary?.holdingCount ?? 0;
   const isProfit = totalProfit >= 0;
+  const yesterdayTotalProfit = summary?.yesterdayTotalProfit ?? null;
+  const hasYesterdayTotal = yesterdayTotalProfit != null;
+  const isYesterdayUp = hasYesterdayTotal && yesterdayTotalProfit >= 0;
 
   function openEdit(h: SummaryHoldingItem) {
     setEditRow(h);
@@ -96,22 +102,6 @@ export default function Dashboard() {
       alert(msg || (err instanceof Error ? err.message : '删除失败'));
     }
   }
-
-  const pieData =
-    summary?.holdings.map((h, i) => ({
-      name: h.name.length > 6 ? h.name.slice(0, 6) + '…' : h.name,
-      value: h.currentValue,
-      code: h.code,
-      fill: [
-        '#667eea',
-        '#764ba2',
-        '#f59e0b',
-        '#10b981',
-        '#ef4444',
-        '#3b82f6',
-        '#ec4899',
-      ][i % 7],
-    })) ?? [];
 
   return (
     <div className="dashboard-page">
@@ -168,6 +158,13 @@ export default function Dashboard() {
                     </span>
                   </div>
                 </div>
+                <div className="dashboard-stat-card">
+                  <List className="dashboard-stat-icon" />
+                  <div>
+                    <span className="dashboard-stat-label">持仓基金</span>
+                    <span className="dashboard-stat-value">{holdingCount} 只</span>
+                  </div>
+                </div>
                 <div
                   className={`dashboard-stat-card dashboard-stat-card--profit ${isProfit ? 'up' : 'down'}`}
                 >
@@ -184,50 +181,29 @@ export default function Dashboard() {
                     </span>
                   </div>
                 </div>
-                <div className="dashboard-stat-card">
-                  <List className="dashboard-stat-icon" />
+                <div
+                  className={
+                    hasYesterdayTotal
+                      ? `dashboard-stat-card dashboard-stat-card--profit ${isYesterdayUp ? 'up' : 'down'}`
+                      : 'dashboard-stat-card'
+                  }
+                >
+                  <CalendarDays className="dashboard-stat-icon" />
                   <div>
-                    <span className="dashboard-stat-label">持仓基金</span>
-                    <span className="dashboard-stat-value">{holdingCount} 只</span>
+                    <span className="dashboard-stat-label">昨日总盈亏</span>
+                    {hasYesterdayTotal ? (
+                      <span className="dashboard-stat-value">
+                        {isYesterdayUp ? '+' : ''}¥
+                        {yesterdayTotalProfit.toLocaleString('zh-CN', {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    ) : (
+                      <span className="dashboard-stat-value dashboard-stat-value--muted">—</span>
+                    )}
                   </div>
                 </div>
               </div>
-
-              {pieData.length > 0 && (
-                <div className="dashboard-pie-wrap">
-                  <h3 className="dashboard-pie-title">
-                    <PieChartIcon size={18} />
-                    资产占比
-                  </h3>
-                  <div className="dashboard-pie-chart">
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={80}
-                          paddingAngle={2}
-                          label={false}
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value: unknown) =>
-                            `¥${Number(value ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
-                          }
-                        />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
 
               <div className="dashboard-holdings-wrap">
                 <h3 className="dashboard-holdings-title">持仓列表</h3>
@@ -238,10 +214,10 @@ export default function Dashboard() {
                     {summary.holdings.map((h) => (
                       <li key={h.id} className="dashboard-holding-card">
                         <div className="dashboard-holding-card-header">
-                          <span className="dashboard-holding-name-wrap">
+                          <div className="dashboard-holding-name-wrap">
                             <span className="dashboard-holding-name">{h.name}</span>
                             <span className="dashboard-holding-code">（{h.code}）</span>
-                          </span>
+                          </div>
                           <div className="dashboard-holding-actions">
                             <button
                               type="button"
@@ -273,6 +249,23 @@ export default function Dashboard() {
                             <span className="dashboard-holding-metric-value">
                               {h.costTotal.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                             </span>
+                          </div>
+                          <div className="dashboard-holding-metric">
+                            <span className="dashboard-holding-metric-label">昨日收益</span>
+                            {h.yesterdayProfit != null ? (
+                              <span
+                                className={`dashboard-holding-metric-value dashboard-holding-profit ${
+                                  h.yesterdayProfit >= 0 ? 'up' : 'down'
+                                }`}
+                              >
+                                {h.yesterdayProfit >= 0 ? '+' : ''}
+                                {h.yesterdayProfit.toLocaleString('zh-CN', {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </span>
+                            ) : (
+                              <span className="dashboard-holding-metric-value dashboard-holding-metric-na">—</span>
+                            )}
                           </div>
                           <div className="dashboard-holding-metric">
                             <span className="dashboard-holding-metric-label">持仓收益/率</span>

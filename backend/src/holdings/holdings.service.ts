@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { FundInfo } from '../fund/fund.service';
 import { FundService } from '../fund/fund.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
@@ -48,6 +49,11 @@ export interface SummaryHoldingItem {
   profitLossPercent: string;
   /** 占比（占当前总市值） */
   sharePercent: number;
+  /**
+   * 估算昨日收益（元）：持仓市值 × 该基金最近披露日涨跌幅（与天天基金 `recentChange1d` 同源）。
+   * 接口无涨跌幅时为 null。
+   */
+  yesterdayProfit: number | null;
 }
 
 export interface GetSummaryResult {
@@ -57,8 +63,29 @@ export interface GetSummaryResult {
   profitRate: string;
   /** 持仓只数 */
   holdingCount: number;
+  /**
+   * 昨日总盈亏估算（元）：各持仓昨日收益之和；无日涨跌幅数据时为 null。
+   */
+  yesterdayTotalProfit: number | null;
   holdings: SummaryHoldingItem[];
 }
+
+/** 解析基金接口返回的日涨跌幅字符串（如 +1.23%、—）为数值（百分比数字，非小数） */
+function parseDailyPercentFromDisplay(raw: string | undefined): number | null {
+  if (raw == null || String(raw).trim() === '' || String(raw).trim() === '—') {
+    return null;
+  }
+  const n = parseFloat(String(raw).replace(/[+%\s]/g, ''));
+  return Number.isNaN(n) ? null : n;
+}
+
+type HoldingRow = {
+  id: number;
+  code: string;
+  name: string;
+  costTotal: number;
+  costPrice: number;
+};
 
 @Injectable()
 export class HoldingsService {
@@ -232,6 +259,60 @@ export class HoldingsService {
   }
 
   /**
+   * 每次拉取总览时，用最新净值按「编辑持仓」同一规则反推 costPrice，并更新基金名称入库，避免库内长期停留在旧净值。
+   */
+  private async persistHoldingsFromLatestQuotes(
+    userId: number,
+    list: HoldingRow[],
+    priceByCode: Map<string, number>,
+    infoByCode: Map<string, FundInfo>,
+  ): Promise<void> {
+    let changed = false;
+    for (const h of list) {
+      const info = infoByCode.get(h.code);
+      const nav = priceByCode.get(h.code) ?? 0;
+      const navOk = Number.isFinite(nav) && nav > 0;
+
+      let nameNext = h.name;
+      if (info?.name && info.name !== `基金${h.code}`) {
+        nameNext = info.name;
+      }
+
+      if (!navOk) {
+        if (nameNext !== h.name) {
+          await this.prisma.holding.update({
+            where: { id: h.id },
+            data: { name: nameNext },
+          });
+          changed = true;
+        }
+        continue;
+      }
+
+      const costPriceRef = h.costPrice > 0 ? h.costPrice : 1;
+      const amount = h.costTotal / costPriceRef;
+      const currentValue = amount * nav;
+      const amountShares = currentValue / nav;
+      const costPriceNew =
+        amountShares > 0 ? h.costTotal / amountShares : costPriceRef;
+
+      const priceChanged = Math.abs(costPriceNew - h.costPrice) > 1e-6;
+      const nameChanged = nameNext !== h.name;
+      if (!priceChanged && !nameChanged) continue;
+
+      await this.prisma.holding.update({
+        where: { id: h.id },
+        data: { name: nameNext, costPrice: costPriceNew },
+      });
+      changed = true;
+    }
+
+    if (changed) {
+      this.realtime.notifyPortfolioChanged(userId);
+    }
+  }
+
+  /**
    * 总览：聚合总本金、总市值、总盈亏、盈亏率；批量请求实时净值（Promise.all）返回持仓明细
    */
   async getSummary(userId: number): Promise<GetSummaryResult> {
@@ -246,6 +327,7 @@ export class HoldingsService {
         totalProfit: 0,
         profitRate: '0%',
         holdingCount: 0,
+        yesterdayTotalProfit: null,
         holdings: [],
       };
     }
@@ -255,19 +337,32 @@ export class HoldingsService {
       uniqueCodes.map((code) => this.fundService.getFundInfo(code)),
     );
     const priceByCode = new Map<string, number>();
+    const dailyPctByCode = new Map<string, number | null>();
     uniqueCodes.forEach((code, i) => {
       const p = parseFloat(fundInfos[i]?.netValue ?? '0');
       priceByCode.set(code, Number.isNaN(p) ? 0 : p);
+      dailyPctByCode.set(code, parseDailyPercentFromDisplay(fundInfos[i]?.recentChange1d));
     });
+
+    const infoByCode = new Map<string, FundInfo>();
+    uniqueCodes.forEach((code, i) => {
+      if (fundInfos[i]) infoByCode.set(code, fundInfos[i]);
+    });
+
+    await this.persistHoldingsFromLatestQuotes(userId, list, priceByCode, infoByCode);
 
     let totalInvestment = 0;
     let totalValue = 0;
     const holdings: SummaryHoldingItem[] = [];
 
     for (const h of list) {
+      const info = infoByCode.get(h.code);
+      const displayName =
+        info?.name && info.name !== `基金${h.code}` ? info.name : h.name;
       const currentPrice = priceByCode.get(h.code) ?? h.costPrice;
-      const amount = h.costTotal / h.costPrice;
-      const currentValue = amount * (currentPrice || h.costPrice);
+      const costPriceRef = h.costPrice > 0 ? h.costPrice : 1;
+      const amount = h.costTotal / costPriceRef;
+      const currentValue = amount * (currentPrice || costPriceRef);
       const profitLoss = currentValue - h.costTotal;
       const profitLossPercent =
         h.costTotal > 0
@@ -277,16 +372,23 @@ export class HoldingsService {
       totalInvestment += h.costTotal;
       totalValue += currentValue;
 
+      const dailyPct = dailyPctByCode.get(h.code);
+      const yesterdayProfit =
+        dailyPct != null && currentValue > 0
+          ? Math.round(((currentValue * dailyPct) / 100) * 100) / 100
+          : null;
+
       holdings.push({
         id: h.id,
         code: h.code,
-        name: h.name,
+        name: displayName,
         costTotal: h.costTotal,
         currentPrice,
         currentValue,
         profitLoss,
         profitLossPercent: (profitLoss >= 0 ? '+' : '') + profitLossPercent,
         sharePercent: 0,
+        yesterdayProfit,
       });
     }
 
@@ -301,12 +403,25 @@ export class HoldingsService {
         totalValue > 0 ? (item.currentValue / totalValue) * 100 : 0;
     });
 
+    let yesterdaySum = 0;
+    let yesterdayAny = false;
+    for (const item of holdings) {
+      if (item.yesterdayProfit != null) {
+        yesterdaySum += item.yesterdayProfit;
+        yesterdayAny = true;
+      }
+    }
+    const yesterdayTotalProfit = yesterdayAny
+      ? Math.round(yesterdaySum * 100) / 100
+      : null;
+
     return {
       totalInvestment,
       totalValue,
       totalProfit,
       profitRate: (totalProfit >= 0 ? '+' : '') + profitRate,
       holdingCount: holdings.length,
+      yesterdayTotalProfit,
       holdings,
     };
   }

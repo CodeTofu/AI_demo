@@ -12,6 +12,8 @@ export interface SummaryHoldingItem {
   profitLoss: number;
   profitLossPercent: string;
   sharePercent: number;
+  /** 估算昨日收益（元），与后端基金日涨跌幅一致；无数据时为 null */
+  yesterdayProfit: number | null;
 }
 
 export interface GetSummaryResult {
@@ -20,6 +22,8 @@ export interface GetSummaryResult {
   totalProfit: number;
   profitRate: string;
   holdingCount: number;
+  /** 昨日总盈亏估算（元），与持仓列表中日涨跌幅推算一致；无数据时为 null */
+  yesterdayTotalProfit: number | null;
   holdings: SummaryHoldingItem[];
 }
 
