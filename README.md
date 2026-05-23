@@ -13,7 +13,7 @@
 - **AI 对话**：基于 Vercel AI SDK 的聊天能力（需自行配置大模型 API Key）  
 - **辅助页面**：`/home` 保留用户 CRUD 示例页，便于对照 REST 与前后端协作  
 
-更细的流程说明、排错与 AI 配置见 **[docs/](./docs/)**（推荐从 [docs/README.md](./docs/README.md) 与 [docs/START_PROJECT.md](./docs/START_PROJECT.md) 开始）。
+更细的流程说明、排错与 AI 配置见 **[docs/](./docs/)**（推荐从 [docs/文档索引.md](./docs/文档索引.md) 与 [docs/项目启动指南.md](./docs/项目启动指南.md) 开始）。
 
 ---
 
@@ -114,7 +114,7 @@ npm run dev
 
 1. 打开 <http://localhost:3000/register> 注册，或 <http://localhost:3000/login> 登录。  
 2. 登录后默认进入 **Dashboard**（`/`）。  
-3. AI 聊天：需在后端 `.env` 中配置可用的 API Key；详见 [docs/AI_SDK_SETUP.md](./docs/AI_SDK_SETUP.md)。  
+3. AI 聊天：需在后端 `.env` 中配置可用的 API Key；详见 [docs/AI_SDK配置.md](./docs/AI_SDK配置.md)。  
 
 ### 6. 独立 BFF（可选，学习编排层）
 
@@ -158,7 +158,7 @@ npm run dev
 
 ## 延伸阅读
 
-- [文档索引](./docs/README.md)  
-- [详细启动步骤](./docs/START_PROJECT.md)  
+- [文档索引](./docs/文档索引.md)
+- [详细启动步骤](./docs/项目启动指南.md)
 - [后端说明](./backend/README.md)  
 - [独立 BFF 说明](./bff/README.md)  

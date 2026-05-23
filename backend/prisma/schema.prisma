@@ -39,3 +39,30 @@ model Holding {
   @@index([userId])
   @@map("holdings")
 }
+
+
+// 知识库文档（RAG）
+model KnowledgeDocument {
+  id        Int              @id @default(autoincrement())
+  title     String
+  source    String?          // 可选：文件路径、manual 等
+  createdAt DateTime         @default(now())
+  chunks    KnowledgeChunk[]
+
+  @@map("knowledge_documents")
+}
+
+// 文档切块 + 向量
+model KnowledgeChunk {
+  id         Int                              @id @default(autoincrement())
+  documentId Int
+  chunkIndex Int                              // 同文档内块序号，从 0 开始
+  content    String                           @db.Text
+  embedding  Unsupported("vector(1024)")?   // 维度与 embedding 模型一致
+  createdAt  DateTime                         @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("knowledge_chunks")
+}

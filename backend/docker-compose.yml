@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16   # 原来是 postgres:16
     container_name: fund_coach_db
     restart: always
     environment:

@@ -127,5 +127,5 @@ AI 仍会根据这些数据继续生成文字总结（maxSteps=5 不变）。
 
 ## 七、相关文档
 
-- 聊天与工具调用流程：[BACKEND_CHAT_FLOW.md](./BACKEND_CHAT_FLOW.md)
-- 项目启动与配置：[START_PROJECT.md](./START_PROJECT.md)
+- 聊天与工具调用流程：[后端聊天流程.md](./后端聊天流程.md)
+- 项目启动与配置：[项目启动指南.md](./项目启动指南.md)
