@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AiModule } from './ai/ai.module';
 import { HoldingsModule } from './holdings/holdings.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     AiModule,
     HoldingsModule,
     RealtimeModule,
+    KnowledgeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

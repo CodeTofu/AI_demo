@@ -118,7 +118,8 @@ const DEFAULT_DASHSCOPE_VL_MODEL = 'qwen-vl-plus';
 /** 纯文本默认走百炼兼容接口时的模型（与多模态 VL 分开配置） */
 const DEFAULT_DASHSCOPE_CHAT_MODEL = 'qwen-turbo';
 
-function getDashscopeCompatibleBaseUrl(): string {
+/** 百炼 OpenAI 兼容 API 根地址（聊天、embedding 等共用） */
+export function getDashscopeCompatibleBaseUrl(): string {
   return (
     process.env.DASHSCOPE_BASE?.trim() ||
     process.env.DASHSCOPE_OPENAI_BASE?.trim() ||

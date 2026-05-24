@@ -11,6 +11,7 @@
 - **用户体系**：注册 / 登录、JWT 保护路由、密码 bcrypt 存储  
 - **业务示例**：个人基金持仓记录与概览（Dashboard）  
 - **AI 对话**：基于 Vercel AI SDK 的聊天能力（需自行配置大模型 API Key）  
+- **RAG 知识库**：PostgreSQL + pgvector，FAQ 向量检索并注入聊天（见 [docs/rag/RAG打通记录.md](./docs/rag/RAG打通记录.md)）  
 - **辅助页面**：`/home` 保留用户 CRUD 示例页，便于对照 REST 与前后端协作  
 
 更细的流程说明、排错与 AI 配置见 **[docs/](./docs/)**（推荐从 [docs/文档索引.md](./docs/文档索引.md) 与 [docs/项目启动指南.md](./docs/项目启动指南.md) 开始）。

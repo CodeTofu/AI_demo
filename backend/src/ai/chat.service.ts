@@ -14,6 +14,7 @@ import {
   createDashscopeVlLanguageModelFromEnv,
   resolveChatLanguageModel,
 } from './llm-language-model';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 /** 基金查询：支持 6 位代码或基金名称 */
 const fundQuerySchema = z.object({
@@ -168,6 +169,40 @@ const USER_MULTIMODAL_STRIP_PLACEHOLDER =
  * 将用户消息里「除 text 以外」的部件全部替换为占位文本。
  * 覆盖 image / file / 以及适配层可能带入的其它部件，避免第二步请求仍序列化为 image_url 等导致整段失败。
  */
+/** 从 UI 消息中取最后一条用户文本，供 RAG 检索 */
+function extractLastUserTextFromUi(uiMessages: Omit<UIMessage, 'id'>[]): string {
+  for (let i = uiMessages.length - 1; i >= 0; i--) {
+    const msg = uiMessages[i];
+    if (msg.role !== 'user') continue;
+    if (Array.isArray(msg.parts)) {
+      const text = msg.parts
+        .filter((p) => p.type === 'text')
+        .map((p) => ('text' in p ? String(p.text ?? '') : ''))
+        .join('\n')
+        .trim();
+      if (text) return text;
+    }
+    const legacy = (msg as { content?: unknown }).content;
+    if (typeof legacy === 'string' && legacy.trim()) return legacy.trim();
+  }
+  return '';
+}
+
+function readRagTopK(): number {
+  const n = Number(process.env.RAG_TOP_K || 3);
+  if (!Number.isFinite(n)) return 3;
+  return Math.min(Math.max(Math.floor(n), 1), 10);
+}
+
+function readRagMinScore(): number {
+  const n = Number(process.env.RAG_MIN_SCORE ?? 0.25);
+  return Number.isFinite(n) ? n : 0.25;
+}
+
+function isRagEnabled(): boolean {
+  return (process.env.RAG_ENABLED || 'true').trim().toLowerCase() !== 'false';
+}
+
 function stripNonTextUserParts(messages: ModelMessage[]): ModelMessage[] {
   return messages.map((msg) => {
     if (msg.role !== 'user') return msg;
@@ -192,7 +227,29 @@ export class ChatService {
   constructor(
     private readonly fundService: FundService,
     private readonly holdingsService: HoldingsService,
+    private readonly knowledgeService: KnowledgeService,
   ) {}
+
+  /** 按用户最后一条文本做向量检索，拼入 system（失败或未命中则仅用原 system） */
+  private async buildSystemWithRag(uiMessages: Omit<UIMessage, 'id'>[]): Promise<string> {
+    if (!isRagEnabled()) return SYSTEM_PROMPT;
+
+    const query = extractLastUserTextFromUi(uiMessages);
+    if (!query) return SYSTEM_PROMPT;
+
+    try {
+      const { hits } = await this.knowledgeService.search(query, readRagTopK());
+      const minScore = readRagMinScore();
+      const relevant = hits.filter((h) => h.score >= minScore);
+      const ragBlock = this.knowledgeService.formatHitsForSystemPrompt(relevant);
+      if (!ragBlock) return SYSTEM_PROMPT;
+      return `${SYSTEM_PROMPT}\n\n---\n\n${ragBlock}`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[ChatService] RAG 检索跳过:', msg);
+      return SYSTEM_PROMPT;
+    }
+  }
 
   private buildTools(userId: number) {
     return {
@@ -274,10 +331,12 @@ export class ChatService {
       messagesToSend = stripNonTextUserParts(messagesForProvider);
     }
 
+    const system = await this.buildSystemWithRag(uiMessages);
+
     const result = streamText({
       model,
       messages: messagesToSend,
-      system: SYSTEM_PROMPT,
+      system,
       tools: tools as any,
       stopWhen: stepCountIs(20),
       /**
