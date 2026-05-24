@@ -1,0 +1,163 @@
+.knowledge-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.knowledge-header {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: white;
+}
+
+.knowledge-header .header-content h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.8rem;
+}
+
+.knowledge-header .header-content p {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.knowledge-header .user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.knowledge-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.knowledge-header .nav-link {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 0.9rem;
+}
+
+.knowledge-header .nav-link:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.knowledge-header .logout-button {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.knowledge-main {
+  max-width: 720px;
+  margin: 2rem auto;
+  padding: 0 1.5rem 2rem;
+}
+
+.upload-section {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+.upload-section h2 {
+  margin: 0 0 0.5rem;
+  color: #333;
+}
+
+.section-hint {
+  margin: 0 0 1.5rem;
+  color: #666;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.upload-form .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.upload-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #444;
+}
+
+.upload-form input[type='text'],
+.upload-form input[type='file'] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.upload-form input[type='text'] {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.file-meta {
+  margin: 0.5rem 0 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.form-error {
+  color: #c0392b;
+  margin: 0 0 1rem;
+}
+
+.submit-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.result-card {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: #f0f4ff;
+  border-radius: 8px;
+  border: 1px solid #c5d0f5;
+}
+
+.result-card h3 {
+  margin: 0 0 0.75rem;
+  color: #333;
+}
+
+.result-card ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #444;
+}
+
+.result-card li {
+  margin-bottom: 0.35rem;
+}
+
+.result-hint {
+  margin: 1rem 0 0;
+  color: #666;
+  font-size: 0.9rem;
+}

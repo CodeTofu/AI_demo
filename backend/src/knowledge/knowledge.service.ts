@@ -11,6 +11,7 @@ import { EmbeddingService } from './embedding.service';
 import { chunkText } from './chunk-text.util';
 import { embeddingToPgVectorLiteral } from './pg-vector.util';
 import type { IngestKnowledgeDto } from './dto/ingest-knowledge.dto';
+import { PdfChunkService } from './pdf-chunk.service';
 
 const EMBED_BATCH_SIZE = 10;
 const DEFAULT_TOP_K = 3;
@@ -30,6 +31,7 @@ export class KnowledgeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embedding: EmbeddingService,
+    private readonly pdfChunk: PdfChunkService,
   ) {}
 
   private demoFaqPath(): string {
@@ -67,11 +69,39 @@ export class KnowledgeService {
       throw new BadRequestException('文本为空，无法入库');
     }
 
+    return this.ingestChunks(dto.title.trim(), source, chunks);
+  }
+
+  /** PDF 上传入库：LangChain 分片 → embedding → 写库 */
+  async ingestPdf(
+    file: Express.Multer.File,
+    title?: string,
+  ): Promise<{
+    documentId: number;
+    title: string;
+    source: string;
+    chunkCount: number;
+  }> {
+    const chunks = await this.pdfChunk.parseAndChunkPdf(file.buffer, file.originalname);
+
+    const docTitle = title?.trim() || file.originalname.replace(/\.pdf$/i, '') || '未命名 PDF';
+    const source = `upload:${file.originalname}`;
+
+    return this.ingestChunks(docTitle, source, chunks);
+  }
+
+  private async ingestChunks(
+    title: string,
+    source: string,
+    chunks: string[],
+  ): Promise<{
+    documentId: number;
+    title: string;
+    source: string;
+    chunkCount: number;
+  }> {
     const doc = await this.prisma.knowledgeDocument.create({
-      data: {
-        title: dto.title.trim(),
-        source,
-      },
+      data: { title, source },
     });
 
     const allEmbeddings: number[][] = [];
@@ -99,7 +129,7 @@ export class KnowledgeService {
     return {
       documentId: doc.id,
       title: doc.title,
-      source: source,
+      source,
       chunkCount: chunks.length,
     };
   }

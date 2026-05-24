@@ -74,6 +74,9 @@ function Home() {
             <Link to="/chat" className="chat-link">
               💬 AI 聊天
             </Link>
+            <Link to="/knowledge" className="chat-link">
+              📚 知识库
+            </Link>
             <button onClick={handleLogout} className="logout-button">
               退出登录
             </button>

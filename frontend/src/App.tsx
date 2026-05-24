@@ -5,6 +5,7 @@ import Register from './pages/Register'
 import Home from './pages/Home'
 import Chat from './pages/Chat'
 import Dashboard from './pages/Dashboard'
+import Knowledge from './pages/Knowledge'
 import ProtectedRoute from './components/ProtectedRoute'
 import './App.css'
 
@@ -55,6 +56,15 @@ function App() {
           element={
             <ProtectedRoute>
               <Chat />
+            </ProtectedRoute>
+          }
+        />
+        {/* 知识库管理 */}
+        <Route
+          path="/knowledge"
+          element={
+            <ProtectedRoute>
+              <Knowledge />
             </ProtectedRoute>
           }
         />
